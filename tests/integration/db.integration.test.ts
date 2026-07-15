@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { migrate } from "../../src/db/migrate";
 import { getPool, closePool } from "../../src/db/pool";
