@@ -109,7 +109,17 @@ export class TranscriptionManager extends EventEmitter {
   private async beginReconnect(key: string, attempt: number): Promise<void> {
     const active = this.sessions.get(key);
     if (!active) return;
-    active.reconnecting = true;
+
+    // Reentrancy guard: onError and onClose can both fire for the same underlying
+    // failure, each invoking beginReconnect(key, 0). Only the first (synchronous)
+    // caller should start a reconnect chain; a second concurrent trigger for the
+    // same key must be a no-op so we never end up with two independent chains
+    // racing to replace active.session. Internal retries (attempt > 0) are the
+    // continuation of an already-claimed chain, so they skip this check.
+    if (attempt === 0) {
+      if (active.reconnecting) return;
+      active.reconnecting = true;
+    }
 
     if (attempt >= this.reconnectConfig.retries) {
       this.sessions.delete(key);
@@ -118,6 +128,14 @@ export class TranscriptionManager extends EventEmitter {
 
     await this.sleep(this.reconnectConfig.baseDelayMs * 2 ** attempt);
 
+    // Re-validate after the sleep: checkInactivity or handleParticipantLeft may
+    // have removed (or replaced) this session's entry while we were asleep. If so,
+    // this reconnect attempt is stale and must not resurrect a connection nobody
+    // references anymore.
+    if (this.sessions.get(key) !== active) {
+      return;
+    }
+
     try {
       const connection = this.deps.createSession({ diarize: this.deps.mode === "diarized" });
       const newSession = SttSession.start(connection, {
@@ -125,6 +143,12 @@ export class TranscriptionManager extends EventEmitter {
         onError: () => this.beginReconnect(key, 0),
         onClose: () => this.beginReconnect(key, 0),
       });
+
+      // Guard against the session being torn down/replaced during creation as well.
+      if (this.sessions.get(key) !== active) {
+        newSession.close();
+        return;
+      }
 
       const bufferedChunks = active.bufferedChunks;
       active.session = newSession;
