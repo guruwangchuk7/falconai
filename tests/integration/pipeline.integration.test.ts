@@ -5,7 +5,7 @@ import { migrate } from "../../src/db/migrate";
 import { getPool, closePool } from "../../src/db/pool";
 import { closeRedisClient, getRedisClient } from "../../src/redis/client";
 import { ZoomBotAdapter } from "../../src/zoom/zoomBotAdapter";
-import { TranscriptionManager } from "../../src/transcription/transcriptionManager";
+import { wireTranscriptionPipeline } from "../../src/server/wireTranscriptionPipeline";
 import { TranscriptPipeline } from "../../src/pipeline/transcriptPipeline";
 import { PostgresTranscriptStore } from "../../src/pipeline/postgresTranscriptStore";
 import { RedisTranscriptPublisher } from "../../src/pipeline/redisTranscriptPublisher";
@@ -76,8 +76,12 @@ describe("end-to-end pipeline wiring", () => {
       redisRetry: { retries: 1, baseDelayMs: 1 },
     });
 
-    const transcriptionManager = new TranscriptionManager({
-      mode: "per-participant",
+    // Exercise the actual production composition-root wiring (src/server/index.ts's
+    // wireTranscriptionPipeline) rather than re-implementing the event wiring inline,
+    // so a regression like meetingStartedAtMs being frozen at construction time would
+    // be caught here.
+    wireTranscriptionPipeline(zoomBotAdapter, {
+      pipeline,
       createSession: (): DeepgramLiveConnectionLike => {
         deepgramEmitter = new EventEmitter();
         return {
@@ -89,42 +93,43 @@ describe("end-to-end pipeline wiring", () => {
         };
       },
       inactivityTimeoutMs: 60_000,
-      meetingStartedAtMs: 0,
-      onTranscriptEvent: (event) =>
-        pipeline.handleTranscriptEvent({ ...event, meetingId }),
-      now: () => Date.now(),
     });
-
-    zoomBotAdapter.on("meetingStarted", (mId, participants) =>
-      pipeline.handleMeetingStarted(mId, 0, participants)
-    );
-    zoomBotAdapter.on("audioChunk", (participantId, buffer, timestamp) =>
-      transcriptionManager.handleAudioChunk(participantId, buffer, timestamp)
-    );
-    zoomBotAdapter.on("meetingEnded", (status) =>
-      pipeline.handleMeetingEnded(meetingId, Date.now(), status)
-    );
 
     webhookEmitter.emit("started", {
       meetingId,
       joinPayload: {},
       participants: [{ participantId: "p1", displayName: "Alex" }],
     });
-    await new Promise((r) => setTimeout(r, 10));
+    // wireTranscriptionPipeline constructs the TranscriptionManager (and captures
+    // meetingStartedAtMs = Date.now()) inside the "meetingStarted" handler, which
+    // fires asynchronously (ZoomBotAdapter awaits the fake client's join() promise
+    // first) -- so wait for that to settle before sending audio.
+    await new Promise((r) => setTimeout(r, 50));
 
+    // Audio is sent with a real, current raw timestamp -- matching how the real
+    // ZoomBotAdapter/RTMS client hand Zoom's own wall-clock timestamps to
+    // TranscriptionManager. meetingStartedAtMs is likewise a real Date.now() value
+    // now (captured inside wireTranscriptionPipeline's "meetingStarted" handler),
+    // so normalizeTimestamp's elapsed-time math (rawTs - meetingStartedAtMs) works
+    // out to a small, sane, non-negative number, the same shape it would take in
+    // production. This exercises the fix for meetingStartedAtMs previously being
+    // frozen at the literal 0 -- with that bug, meetingStartedAtMs would never
+    // match the epoch these raw timestamps are drawn from.
+    const audioTs = Date.now();
     webhookEmitter.emit("audio", {
       buf: Buffer.from([1, 2, 3]),
-      ts: 100,
+      ts: audioTs,
       meta: { userId: "p1", userName: "Alex" },
     });
     await new Promise((r) => setTimeout(r, 10));
 
-    // Audio was sent at raw timestamp 100 (meetingStartedAtMs: 0), so a 50ms
-    // utterance ending "now" fits within elapsed time (raw [50, 100] -> normalized [50, 100]).
+    // A 20ms utterance ending at audioTs comfortably postdates meetingStartedAtMs
+    // (which was captured at least ~50ms earlier), so normalizeTimestamp's
+    // elapsed-time computation stays positive with real wall-clock margin.
     deepgramEmitter!.emit("transcript", {
       text: "hello from integration test",
       isFinal: true,
-      durationMs: 50,
+      durationMs: 20,
       confidence: 0.9,
     });
     await new Promise((r) => setTimeout(r, 10));
