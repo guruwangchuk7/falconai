@@ -46,7 +46,17 @@ export class TranscriptPipeline {
     timestamp: number,
     participants: Participant[]
   ): Promise<void> {
-    await this.deps.store.openMeeting(meetingId);
+    try {
+      await retryWithBackoff(
+        () => this.deps.store.openMeeting(meetingId),
+        this.postgresRetry
+      );
+    } catch (err) {
+      this.deps.onAlert(
+        "postgres persistence failed after retries, continuing live delivery",
+        err
+      );
+    }
     await this.publishLifecycleWithRetry({
       type: "meeting_lifecycle",
       meetingId,
@@ -61,7 +71,17 @@ export class TranscriptPipeline {
     timestamp: number,
     status: "ended" | "ended_error"
   ): Promise<void> {
-    await this.deps.store.closeMeeting(meetingId, status);
+    try {
+      await retryWithBackoff(
+        () => this.deps.store.closeMeeting(meetingId, status),
+        this.postgresRetry
+      );
+    } catch (err) {
+      this.deps.onAlert(
+        "postgres persistence failed after retries, continuing live delivery",
+        err
+      );
+    }
     await this.publishLifecycleWithRetry({
       type: "meeting_lifecycle",
       meetingId,

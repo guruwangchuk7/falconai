@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { TranscriptPipeline } from "../../src/pipeline/transcriptPipeline";
 
-function makeDeps(overrides: Partial<Parameters<typeof TranscriptPipeline.prototype.constructor>[0]> = {}) {
+function makeDeps(overrides: Record<string, unknown> = {}) {
   return {
     store: {
       openMeeting: vi.fn().mockResolvedValue(undefined),
@@ -116,6 +116,33 @@ describe("TranscriptPipeline", () => {
       expect.any(Error)
     );
     expect(deps.publisher.publishTranscript).toHaveBeenCalled();
+  });
+
+  it("alerts but publishes lifecycle when meeting open fails", async () => {
+    const deps = makeDeps({
+      store: {
+        openMeeting: vi.fn().mockRejectedValue(new Error("db down")),
+        closeMeeting: vi.fn().mockResolvedValue(undefined),
+        saveFinalEvent: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+    const pipeline = new TranscriptPipeline(deps as any);
+
+    await pipeline.handleMeetingStarted("m1", 1000, [
+      { participantId: "p1", displayName: "Alex" },
+    ]);
+
+    expect(deps.onAlert).toHaveBeenCalledWith(
+      expect.stringContaining("postgres persistence failed"),
+      expect.any(Error)
+    );
+    expect(deps.publisher.publishLifecycle).toHaveBeenCalledWith({
+      type: "meeting_lifecycle",
+      meetingId: "m1",
+      status: "started",
+      timestamp: 1000,
+      participants: [{ participantId: "p1", displayName: "Alex" }],
+    });
   });
 
   it("alerts and rethrows when Redis publishing fails after retries", async () => {
