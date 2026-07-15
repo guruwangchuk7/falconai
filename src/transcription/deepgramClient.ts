@@ -45,6 +45,7 @@ export function createDeepgramSession(
     .then((liveSocket) => {
       if (finishRequestedBeforeReady) {
         liveSocket.close();
+        for (const cb of closeCallbacks) cb();
         return;
       }
 
