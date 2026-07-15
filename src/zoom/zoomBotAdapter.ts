@@ -38,8 +38,10 @@ export class ZoomBotAdapter extends EventEmitter {
     participants: Participant[];
   }): Promise<void> {
     this.meetingId = payload.meetingId;
-    await this.connectClient(payload.joinPayload, 0);
-    this.emit("meetingStarted", payload.meetingId, payload.participants);
+    const connected = await this.connectClient(payload.joinPayload, 0);
+    if (connected) {
+      this.emit("meetingStarted", payload.meetingId, payload.participants);
+    }
   }
 
   private handleRtmsStopped(payload: { meetingId: string }): void {
@@ -47,7 +49,7 @@ export class ZoomBotAdapter extends EventEmitter {
     this.emit("meetingEnded", "ended");
   }
 
-  private async connectClient(joinPayload: unknown, attempt: number): Promise<void> {
+  private async connectClient(joinPayload: unknown, attempt: number): Promise<boolean> {
     const client = this.deps.createClient();
     client.setAudioParams(this.deps.audioParams);
     client.onAudioData((buffer, _size, timestamp, metadata) => {
@@ -58,22 +60,23 @@ export class ZoomBotAdapter extends EventEmitter {
     });
     client.onLeave((reason) => {
       if (reason === NORMAL_LEAVE_REASON) return;
-      this.retryConnect(joinPayload, attempt, new Error(`unexpected leave, reason=${reason}`));
+      void this.retryConnect(joinPayload, attempt, new Error(`unexpected leave, reason=${reason}`));
     });
 
     try {
       await client.join(joinPayload);
+      return true;
     } catch (err) {
-      await this.retryConnect(joinPayload, attempt, err);
+      return this.retryConnect(joinPayload, attempt, err);
     }
   }
 
-  private async retryConnect(joinPayload: unknown, attempt: number, _err: unknown): Promise<void> {
+  private async retryConnect(joinPayload: unknown, attempt: number, _err: unknown): Promise<boolean> {
     if (attempt >= this.deps.reconnect.retries) {
       this.emit("meetingEnded", "ended_error");
-      return;
+      return false;
     }
     await this.sleep(this.deps.reconnect.baseDelayMs * 2 ** attempt);
-    await this.connectClient(joinPayload, attempt + 1);
+    return this.connectClient(joinPayload, attempt + 1);
   }
 }
