@@ -59,6 +59,11 @@ export class TranscriptionManager extends EventEmitter {
   }
 
   handleParticipantLeft(participantId: string): void {
+    // In diarized mode, the session is shared across all participants and keyed by DIARIZED_KEY, not participantId.
+    // A single participant leaving should not tear down the shared session — it lives until inactivity timeout or meeting end.
+    if (this.deps.mode === "diarized") {
+      return;
+    }
     const active = this.sessions.get(participantId);
     if (active) {
       active.session.close();
@@ -106,7 +111,11 @@ export class TranscriptionManager extends EventEmitter {
     }
   ): void {
     const active = this.sessions.get(key);
-    const endTsRaw = active?.lastRawTimestampMs ?? this.deps.meetingStartedAtMs;
+    // Late transcript arriving after session was already torn down — discard to avoid negative timestamp.
+    if (!active) {
+      return;
+    }
+    const endTsRaw = active.lastRawTimestampMs;
     const startTsRaw = endTsRaw - payload.durationMs;
     const startTs = normalizeTimestamp(startTsRaw, this.deps.meetingStartedAtMs);
     const endTs = normalizeTimestamp(endTsRaw, this.deps.meetingStartedAtMs);

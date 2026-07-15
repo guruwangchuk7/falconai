@@ -83,6 +83,40 @@ describe("TranscriptionManager (per-participant mode)", () => {
     expect(s1.finish).toHaveBeenCalled();
   });
 
+  it("discards late transcripts arriving after session teardown without crashing", () => {
+    const s1 = makeFakeSession();
+    const createSession = vi.fn(() => s1.connection);
+    const onTranscriptEvent = vi.fn();
+    const manager = new TranscriptionManager({
+      mode: "per-participant",
+      createSession,
+      inactivityTimeoutMs: 60_000,
+      meetingStartedAtMs: 1000,
+      onTranscriptEvent,
+      now: () => 1000,
+    });
+
+    // Send audio from participant, capturing the transcript handler.
+    manager.handleAudioChunk("p1", Buffer.from([1]), 1500);
+    const transcriptHandler = s1.handlers.transcript;
+
+    // Close the session by removing the participant.
+    manager.handleParticipantLeft("p1");
+
+    // Fire a late/trailing transcript callback simulating STT connection firing after teardown.
+    // This should not call onTranscriptEvent and should not throw.
+    expect(() => {
+      transcriptHandler({
+        text: "late transcript",
+        isFinal: true,
+        durationMs: 500,
+        confidence: 0.9,
+      });
+    }).not.toThrow();
+
+    expect(onTranscriptEvent).not.toHaveBeenCalled();
+  });
+
   it("closes a session after the inactivity timeout elapses", () => {
     const s1 = makeFakeSession();
     const createSession = vi.fn(() => s1.connection);
