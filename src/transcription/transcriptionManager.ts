@@ -16,6 +16,9 @@ export interface TranscriptionManagerDeps {
   onTranscriptEvent: (event: PartialTranscriptEvent) => void;
   now: () => number;
   source?: STTProvider;
+  maxBufferedChunks?: number;
+  reconnect?: { retries: number; baseDelayMs: number };
+  sleep?: (ms: number) => Promise<void>;
 }
 
 interface ActiveSession {
@@ -26,18 +29,28 @@ interface ActiveSession {
   // startTs/endTs, since Deepgram's own start/duration are relative to when
   // its connection opened, not the meeting timeline.
   lastRawTimestampMs: number;
+  bufferedChunks: Buffer[];
+  reconnecting: boolean;
 }
 
 const DIARIZED_KEY = "__diarized__";
+const DEFAULT_MAX_BUFFERED_CHUNKS = 250; // ~5s at 20ms/frame
+const DEFAULT_RECONNECT = { retries: 5, baseDelayMs: 500 };
 
 export class TranscriptionManager extends EventEmitter {
   private readonly sessions = new Map<string, ActiveSession>();
   private readonly activeSpeakerTimeline = new ActiveSpeakerTimeline();
   private readonly source: STTProvider;
+  private readonly maxBufferedChunks: number;
+  private readonly reconnectConfig: { retries: number; baseDelayMs: number };
+  private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(private readonly deps: TranscriptionManagerDeps) {
     super();
     this.source = deps.source ?? "deepgram";
+    this.maxBufferedChunks = deps.maxBufferedChunks ?? DEFAULT_MAX_BUFFERED_CHUNKS;
+    this.reconnectConfig = deps.reconnect ?? DEFAULT_RECONNECT;
+    this.sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
 
   handleActiveSpeaker(participantId: string, timestamp: number): void {
@@ -55,6 +68,11 @@ export class TranscriptionManager extends EventEmitter {
     }
     active.lastActivityMs = this.deps.now();
     active.lastRawTimestampMs = timestamp;
+
+    if (active.reconnecting) {
+      this.bufferChunk(active, buffer);
+      return;
+    }
     active.session.send(buffer);
   }
 
@@ -80,21 +98,59 @@ export class TranscriptionManager extends EventEmitter {
     }
   }
 
+  private bufferChunk(active: ActiveSession, buffer: Buffer): void {
+    active.bufferedChunks.push(buffer);
+    if (active.bufferedChunks.length > this.maxBufferedChunks) {
+      active.bufferedChunks.shift();
+      console.warn("dropping buffered audio chunk: reconnect buffer full");
+    }
+  }
+
+  private async beginReconnect(key: string, attempt: number): Promise<void> {
+    const active = this.sessions.get(key);
+    if (!active) return;
+    active.reconnecting = true;
+
+    if (attempt >= this.reconnectConfig.retries) {
+      this.sessions.delete(key);
+      return;
+    }
+
+    await this.sleep(this.reconnectConfig.baseDelayMs * 2 ** attempt);
+
+    try {
+      const connection = this.deps.createSession({ diarize: this.deps.mode === "diarized" });
+      const newSession = SttSession.start(connection, {
+        onResult: (payload) => this.handleResult(key, payload),
+        onError: () => this.beginReconnect(key, 0),
+        onClose: () => this.beginReconnect(key, 0),
+      });
+
+      const bufferedChunks = active.bufferedChunks;
+      active.session = newSession;
+      active.bufferedChunks = [];
+      active.reconnecting = false;
+      for (const chunk of bufferedChunks) {
+        newSession.send(chunk);
+      }
+    } catch {
+      await this.beginReconnect(key, attempt + 1);
+    }
+  }
+
   private openSession(key: string): ActiveSession {
     const connection = this.deps.createSession({ diarize: this.deps.mode === "diarized" });
     const session = SttSession.start(connection, {
       onResult: (payload) => this.handleResult(key, payload),
-      onError: () => {
-        /* handled by reconnect logic in Task 11 */
-      },
-      onClose: () => {
-        /* handled by reconnect logic in Task 11 */
-      },
+      onError: () => this.beginReconnect(key, 0),
+      onClose: () => this.beginReconnect(key, 0),
     });
     const active: ActiveSession = {
       session,
       lastActivityMs: this.deps.now(),
       lastRawTimestampMs: this.deps.meetingStartedAtMs,
+      bufferedChunks: [],
+      reconnecting: false,
     };
     this.sessions.set(key, active);
     return active;
