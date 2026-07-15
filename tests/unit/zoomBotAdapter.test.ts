@@ -122,4 +122,35 @@ describe("ZoomBotAdapter", () => {
 
     expect(onEnded).toHaveBeenCalledWith("ended");
   });
+
+  it("emits meetingEnded with ended_error after exhausting reconnect attempts", async () => {
+    const { source, handlers } = makeFakeWebhookSource();
+    let joinCallCount = 0;
+    const client: RtmsClientLike = {
+      join: vi.fn(async () => {
+        joinCallCount += 1;
+        throw new Error("connect failed");
+      }),
+      leave: vi.fn(),
+      setAudioParams: vi.fn(),
+      onAudioData: vi.fn(),
+      onActiveSpeakerEvent: vi.fn(),
+      onJoinConfirm: vi.fn(),
+      onLeave: vi.fn(),
+    };
+    const adapter = new ZoomBotAdapter({
+      webhookSource: source,
+      createClient: () => client,
+      audioParams: {},
+      reconnect: { retries: 2, baseDelayMs: 1 },
+    });
+
+    const onEnded = vi.fn();
+    adapter.on("meetingEnded", onEnded);
+
+    await handlers.started({ meetingId: "m1", joinPayload: {}, participants: [] });
+
+    expect(joinCallCount).toBe(3); // initial attempt + 2 retries
+    expect(onEnded).toHaveBeenCalledWith("ended_error");
+  });
 });
