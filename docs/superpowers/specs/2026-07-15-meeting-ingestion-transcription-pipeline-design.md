@@ -93,8 +93,21 @@ audio is available, it opens one streaming Deepgram session per participant. Oth
 it runs a single session with speaker diarization enabled and maps diarized labels to
 participant identities using Zoom's join/leave and active-speaker signals. Both code
 paths sit behind the same interface — which one is exercised is a capability check
-at runtime, not a design fork. (Which mode Zoom RTMS actually provides needs to be
-verified during implementation.) Normalizes STT results into `TranscriptEvent`s.
+at runtime, not a design fork. Normalizes STT results into `TranscriptEvent`s.
+
+**Session lifecycle:** a transcription session is created when speech begins (or
+when the first audio is received, depending on provider capabilities). Sessions
+remain active while speech continues and are closed after a configurable
+inactivity timeout, or immediately when a participant leaves the meeting. This
+minimizes connection overhead while avoiding unnecessary long-lived streaming
+sessions.
+
+**Implementation prerequisite:** before implementation begins, verify Zoom's
+meeting integration model (RTMS vs. Meeting SDK) and whether isolated
+participant audio streams are available. The outcome of this spike determines
+the concrete implementation of `ZoomBotAdapter`, but does not change the
+interfaces between `ZoomBotAdapter`, `TranscriptionManager`, and
+`TranscriptPipeline`.
 
 **`TranscriptPipeline`** (persistence + event distribution) — takes `TranscriptEvent`s,
 assigns each a monotonic `sequenceNumber` per meeting, persists **final** events to
@@ -107,7 +120,11 @@ text is persisted, to avoid storing noisy in-progress guesses.
 The `TranscriptEvent` is the formal contract between internal modules:
 
 ```typescript
+type STTProvider = "deepgram" | "assemblyai" | "whisper";
+
 interface TranscriptEvent {
+  version: 1;
+  utteranceId: string;       // stable ID shared by interim and final revisions of the same utterance
   meetingId: string;
   participantId: string;
   speakerName: string;
@@ -116,15 +133,23 @@ interface TranscriptEvent {
   startTs: number;
   endTs: number;
   confidence: number;
-  source: "deepgram";
-  sequenceNumber: number;   // monotonic per meetingId, assigned by TranscriptPipeline
+  source: STTProvider;
+  sequenceNumber: number;    // monotonic per meetingId, assigned by TranscriptPipeline
 }
 ```
+
+Without `utteranceId`, downstream consumers can't tell that several interim
+updates belong to the same spoken sentence rather than separate utterances.
 
 The stream also carries lifecycle control events bracketing each meeting's
 transcript events: `{ type: "meeting_lifecycle", meetingId, status: "started" |
 "ended" | "ended_error", timestamp, participants? }`. This lets a consumer
 subscribing mid-stream tell where a meeting begins/ends without a separate channel.
+
+**Timestamp normalization:** all timestamps are normalized to the meeting
+timeline, using `meetingStarted` as the reference point. This ensures
+transcript events remain comparable regardless of whether they originate from
+multiple per-participant transcription sessions or a single diarized session.
 
 **The Redis Stream (`meeting:{meetingId}:transcript`) is this subsystem's public
 interface.** Downstream consumers — the Knowledge Graph Builder, Decision Extractor,
