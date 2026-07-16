@@ -88,6 +88,6 @@ payload: <JSON string>
 
 ### Known limitations
 
-- **Not yet verified against a real Zoom meeting.** The Zoom-specific wiring (`src/zoom/realRtmsClient.ts`, `src/zoom/realWebhookSource.ts`) has only been type-checked against the installed `@zoom/rtms` package, never executed against a live call. See `docs/superpowers/notes/zoom-rtms-capability-findings.md` for what's confirmed vs. still assumed.
-- **Windows cannot run the real server.** `@zoom/rtms` ships no Windows binary.
+- **Not yet verified against a real Zoom meeting.** The server has been confirmed to start correctly (under WSL2/Linux — see below) and bind its webhook endpoint, but no real Zoom Marketplace app/credentials have been configured, so it's never received an actual webhook or joined a real call. See `docs/superpowers/notes/zoom-rtms-capability-findings.md` for what's confirmed vs. still assumed.
+- **Windows cannot run the real server.** `@zoom/rtms` ships no Windows binary — `npm run dev` fails with a native-bindings error. If you're on Windows, run it under **WSL2** instead: install a distro (`wsl --install -d Ubuntu`), clone the repo into the Linux filesystem (not `/mnt/c/...`/`/mnt/d/...` — much faster and avoids permission issues), and run `npm install`/`npm run dev` from there. If Postgres/Redis run on the Windows side, WSL2 reaches them via the Windows host's IP (`ip route | grep default` from inside WSL), not `localhost` — and by default Postgres only listens on `localhost` and Redis's protected mode refuses non-loopback connections, so both need reconfiguring to accept connections from WSL's subnet for local dev.
 - **Single meeting at a time.** The service is not designed for multiple concurrent meetings yet.

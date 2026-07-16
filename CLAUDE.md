@@ -61,4 +61,4 @@ Defined in `src/types/transcriptEvent.ts`: `TranscriptEvent` (fixed shape: `vers
 
 ### What's unverified
 
-Task 16 of the implementation plan (a live run against a real Zoom meeting) has never been performed — no Zoom Marketplace app/credentials and no Linux/macOS environment have been available. The real-wiring files are type-check-verified only. Treat anything touching live Zoom behavior (webhook payload shape, exact event-name string, `onJoinConfirm` reason-code semantics) as unconfirmed until that live run happens.
+Task 16 of the implementation plan (a live run against a real Zoom meeting) has never been performed. `npm run dev` is now confirmed to actually start successfully under WSL2 (Ubuntu) — `@zoom/rtms`'s native binding loads and the webhook HTTP server binds — but no real Zoom Marketplace app/credentials have been configured, so no actual webhook has ever been delivered to it. Treat anything touching live Zoom behavior (webhook payload shape, exact event-name string, `onJoinConfirm` reason-code semantics) as unconfirmed until that happens — see `docs/superpowers/notes/zoom-rtms-capability-findings.md`.
