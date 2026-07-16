@@ -1,87 +1,91 @@
-import { DeepgramClient } from "@deepgram/sdk";
+import { WebSocket } from "ws";
 import type {
   DeepgramLiveConnectionLike,
   DeepgramTranscriptPayload,
 } from "./deepgramLiveConnection.types";
 
+const DEEPGRAM_LISTEN_URL = "wss://api.deepgram.com/v1/listen";
+
 /**
- * Creates a Deepgram live transcription session using the real-time
- * `listen.v1` streaming API (not `v2`, which does not support `diarize`).
+ * Creates a Deepgram live transcription session via a direct WebSocket
+ * connection to Deepgram's `/v1/listen` endpoint, rather than
+ * `@deepgram/sdk`'s `listen.v1.connect()` wrapper.
  *
- * This factory is intentionally synchronous even though the underlying SDK's
- * `v1.connect(...)` call is async: callers (see Task 10's plan) register
- * `onTranscript`/`onError`/`onClose` handlers and call `send`/`finish`
- * immediately on the returned object, before the websocket has necessarily
- * finished connecting. To support that, callbacks are collected into local
- * arrays synchronously, and any `send`/`finish` calls made before the
- * underlying socket is ready are queued/deferred and replayed once the
- * `connect()` promise resolves.
+ * That wrapper's `ReconnectingWebSocket` never reached OPEN in this
+ * environment even with valid credentials (readyState stuck at CLOSED
+ * indefinitely, no close/error event ever fired) -- confirmed via the `ws`
+ * package succeeding with an identical URL/headers, which isolated the fault
+ * to the SDK wrapper itself, not our auth or connection params.
+ * `TranscriptionManager` (see its reconnect-with-buffering logic) already
+ * owns reconnect responsibility, so a plain WebSocket here is sufficient
+ * without another reconnect layer underneath it.
+ *
+ * Auth note: Deepgram requires the header value `Token <apiKey>` -- the bare
+ * key alone is rejected with a 401 `INVALID_AUTH`.
  */
 export function createDeepgramSession(
   apiKey: string,
   opts: { diarize: boolean }
 ): DeepgramLiveConnectionLike {
-  const deepgram = new DeepgramClient({ apiKey });
+  const params = new URLSearchParams({
+    model: "nova-2",
+    encoding: "linear16",
+    sample_rate: "16000",
+    smart_format: "true",
+    interim_results: "true",
+    diarize: opts.diarize ? "true" : "false",
+  });
+  const socket = new WebSocket(`${DEEPGRAM_LISTEN_URL}?${params.toString()}`, {
+    headers: { Authorization: `Token ${apiKey}` },
+  });
 
   const transcriptCallbacks: Array<(payload: DeepgramTranscriptPayload) => void> = [];
   const errorCallbacks: Array<(err: Error) => void> = [];
   const closeCallbacks: Array<() => void> = [];
   const pendingBuffers: Buffer[] = [];
-  let finishRequestedBeforeReady = false;
 
-  type LiveSocket = Awaited<ReturnType<typeof deepgram.listen.v1.connect>>;
-  let socket: LiveSocket | undefined;
+  socket.on("open", () => {
+    for (const buffer of pendingBuffers) {
+      socket.send(buffer);
+    }
+    pendingBuffers.length = 0;
+  });
 
-  deepgram.listen.v1
-    .connect({
-      model: "nova-2",
-      encoding: "linear16",
-      sample_rate: 16000,
-      // v1 (unlike v2) genuinely supports diarize as a real streaming
-      // option; the SDK models it as the string literals "true"/"false".
-      diarize: opts.diarize ? "true" : "false",
-      Authorization: apiKey,
-    })
-    .then((liveSocket) => {
-      if (finishRequestedBeforeReady) {
-        liveSocket.close();
-        for (const cb of closeCallbacks) cb();
-        return;
-      }
+  socket.on("message", (data: Buffer) => {
+    let parsed: any;
+    try {
+      parsed = JSON.parse(data.toString());
+    } catch {
+      return;
+    }
+    if (parsed.type !== "Results") return;
+    const alt = parsed.channel?.alternatives?.[0];
+    if (!alt) return;
+    const payload: DeepgramTranscriptPayload = {
+      text: alt.transcript || "",
+      isFinal: Boolean(parsed.is_final),
+      durationMs: parsed.duration ? parsed.duration * 1000 : 0,
+      confidence: alt.confidence || 0,
+      speakerLabel:
+        alt.words?.[0]?.speaker !== undefined ? String(alt.words[0].speaker) : undefined,
+    };
+    for (const cb of transcriptCallbacks) cb(payload);
+  });
 
-      liveSocket.on("message", (data) => {
-        if (data.type === "Results" && data.channel?.alternatives?.[0]) {
-          const alt = data.channel.alternatives[0];
-          const payload: DeepgramTranscriptPayload = {
-            text: alt.transcript || "",
-            isFinal: Boolean(data.is_final),
-            durationMs: data.duration ? data.duration * 1000 : 0,
-            confidence: alt.confidence || 0,
-            speakerLabel:
-              alt.words?.[0]?.speaker !== undefined
-                ? String(alt.words[0].speaker)
-                : undefined,
-          };
-          for (const cb of transcriptCallbacks) cb(payload);
-        }
-      });
-      liveSocket.on("error", (err) => {
-        for (const cb of errorCallbacks) cb(err);
-      });
-      liveSocket.on("close", () => {
-        for (const cb of closeCallbacks) cb();
-      });
+  socket.on("error", (err: Error) => {
+    for (const cb of errorCallbacks) cb(err);
+  });
 
-      socket = liveSocket;
-      for (const buffer of pendingBuffers) {
-        liveSocket.sendMedia(buffer);
-      }
-      pendingBuffers.length = 0;
-    })
-    .catch((err: unknown) => {
-      const error = err instanceof Error ? err : new Error(String(err));
-      for (const cb of errorCallbacks) cb(error);
-    });
+  socket.on("unexpected-response", (_req, res) => {
+    const error = new Error(
+      `Deepgram connection rejected: HTTP ${res.statusCode} ${res.statusMessage}`
+    );
+    for (const cb of errorCallbacks) cb(error);
+  });
+
+  socket.on("close", () => {
+    for (const cb of closeCallbacks) cb();
+  });
 
   return {
     onTranscript(cb) {
@@ -94,18 +98,14 @@ export function createDeepgramSession(
       closeCallbacks.push(cb);
     },
     send(buffer) {
-      if (socket) {
-        socket.sendMedia(buffer);
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(buffer);
       } else {
         pendingBuffers.push(buffer);
       }
     },
     finish() {
-      if (socket) {
-        socket.close();
-      } else {
-        finishRequestedBeforeReady = true;
-      }
+      socket.close();
     },
   };
 }

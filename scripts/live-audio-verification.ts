@@ -9,6 +9,8 @@
 import "dotenv/config";
 import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { TranscriptionManager } from "../src/transcription/transcriptionManager";
 import { createDeepgramSession } from "../src/transcription/deepgramClient";
 import { TranscriptPipeline } from "../src/pipeline/transcriptPipeline";
@@ -35,7 +37,7 @@ async function main() {
   }
 
   const meetingId = `live-audio-verification-${Date.now()}`;
-  const pcmPath = "/tmp/live-audio-verification.pcm";
+  const pcmPath = join(tmpdir(), "live-audio-verification.pcm");
 
   console.log(`Converting ${inputFile} to 16kHz mono PCM...`);
   execSync(`ffmpeg -y -i "${inputFile}" -f s16le -ar ${SAMPLE_RATE} -ac 1 "${pcmPath}"`, {
