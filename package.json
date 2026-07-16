@@ -11,7 +11,8 @@
     "test": "vitest run",
     "dev": "tsx src/server/index.ts",
     "migrate": "tsx src/db/runMigrate.ts",
-    "spike:rtms": "tsx scripts/rtms-capability-check.ts"
+    "spike:rtms": "tsx scripts/rtms-capability-check.ts",
+    "verify:live-audio": "tsx scripts/live-audio-verification.ts"
   },
   "keywords": [],
   "author": "",
