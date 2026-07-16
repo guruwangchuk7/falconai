@@ -16,6 +16,28 @@ import type {
 } from "../../src/zoom/zoomBotAdapter.types";
 import type { DeepgramLiveConnectionLike } from "../../src/transcription/deepgramLiveConnection.types";
 
+// TranscriptionManager -> TranscriptPipeline delivery is fire-and-forget by design
+// (onTranscriptEvent is typed `() => void`; production code never awaits it, since a
+// transcript handler shouldn't block on network I/O). So this test can't know exactly
+// when the resulting Postgres INSERT / Redis XADD has landed -- it must poll for the
+// actual data rather than guess a fixed delay (a fixed setTimeout here was flaky:
+// passed reliably on some machines/runs, occasionally read the assertion before the
+// async write completed on others).
+async function waitFor<T>(
+  condition: () => Promise<T | undefined | null | false> | T | undefined | null | false,
+  timeoutMs = 3000
+): Promise<T> {
+  const start = Date.now();
+  while (true) {
+    const result = await condition();
+    if (result) return result as T;
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`Timeout waiting for condition after ${timeoutMs}ms`);
+    }
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
 describe("end-to-end pipeline wiring", () => {
   beforeAll(async () => {
     await migrate();
@@ -132,20 +154,28 @@ describe("end-to-end pipeline wiring", () => {
       durationMs: 20,
       confidence: 0.9,
     });
-    await new Promise((r) => setTimeout(r, 10));
 
-    webhookEmitter.emit("stopped", { meetingId });
-    await new Promise((r) => setTimeout(r, 10));
-
-    const { rows } = await pool.query(
-      "SELECT text FROM transcript_events WHERE meeting_id = $1",
-      [meetingId]
-    );
+    // Wait for the fire-and-forget Postgres write to actually land, rather than
+    // guessing a delay -- see the `waitFor` doc comment above.
+    const rows = await waitFor(async () => {
+      const { rows } = await pool.query(
+        "SELECT text FROM transcript_events WHERE meeting_id = $1",
+        [meetingId]
+      );
+      return rows.length > 0 ? rows : false;
+    });
     expect(rows).toHaveLength(1);
     expect(rows[0].text).toBe("hello from integration test");
 
+    webhookEmitter.emit("stopped", { meetingId });
+
     const redis = await getRedisClient();
-    const entries = await redis.xRange(`meeting:${meetingId}:transcript`, "-", "+");
+    // Same reasoning: wait for the closing meeting_lifecycle entry to actually be
+    // published rather than guessing a delay.
+    const entries = await waitFor(async () => {
+      const es = await redis.xRange(`meeting:${meetingId}:transcript`, "-", "+");
+      return es.length >= 3 ? es : false;
+    });
     const kinds = entries.map((e) => e.message.kind);
     expect(kinds).toEqual(["meeting_lifecycle", "transcript", "meeting_lifecycle"]);
   });
