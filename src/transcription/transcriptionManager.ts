@@ -31,6 +31,13 @@ interface ActiveSession {
   lastRawTimestampMs: number;
   bufferedChunks: Buffer[];
   reconnecting: boolean;
+  // Persistent per-session count of consecutive connection failures. Only reset
+  // to 0 on genuine proof of life (a real transcript result in handleResult), NOT
+  // merely when a new session object is constructed -- for the real Deepgram client
+  // SttSession.start never throws, so "a session object exists" proves nothing about
+  // whether the connection actually works. This is the source of truth for backoff
+  // escalation and the give-up condition.
+  failureCount: number;
 }
 
 const DIARIZED_KEY = "__diarized__";
@@ -98,6 +105,13 @@ export class TranscriptionManager extends EventEmitter {
     }
   }
 
+  closeAll(): void {
+    for (const [key, active] of this.sessions.entries()) {
+      active.session.close();
+      this.sessions.delete(key);
+    }
+  }
+
   private bufferChunk(active: ActiveSession, buffer: Buffer): void {
     active.bufferedChunks.push(buffer);
     if (active.bufferedChunks.length > this.maxBufferedChunks) {
@@ -106,20 +120,28 @@ export class TranscriptionManager extends EventEmitter {
     }
   }
 
+  // The single external entry point for a connection failure signalled by a
+  // session's onError/onClose. Owns the reentrancy guard and reads the session's
+  // own PERSISTENT failure count so that backoff escalates across repeated async
+  // failures and the give-up condition is actually reachable -- the real Deepgram
+  // client never throws synchronously, so it always fails via these callbacks.
+  private onSessionFailure(key: string): void {
+    const active = this.sessions.get(key);
+    if (!active) return;
+    // Reentrancy guard: onError and onClose can both fire for the same underlying
+    // failure. Only the first should start a reconnect chain; a second concurrent
+    // trigger for the same key must be a no-op so we never end up with two
+    // independent chains racing to replace active.session.
+    if (active.reconnecting) return;
+    active.reconnecting = true;
+    const attempt = active.failureCount;
+    active.failureCount += 1;
+    void this.beginReconnect(key, attempt);
+  }
+
   private async beginReconnect(key: string, attempt: number): Promise<void> {
     const active = this.sessions.get(key);
     if (!active) return;
-
-    // Reentrancy guard: onError and onClose can both fire for the same underlying
-    // failure, each invoking beginReconnect(key, 0). Only the first (synchronous)
-    // caller should start a reconnect chain; a second concurrent trigger for the
-    // same key must be a no-op so we never end up with two independent chains
-    // racing to replace active.session. Internal retries (attempt > 0) are the
-    // continuation of an already-claimed chain, so they skip this check.
-    if (attempt === 0) {
-      if (active.reconnecting) return;
-      active.reconnecting = true;
-    }
 
     if (attempt >= this.reconnectConfig.retries) {
       this.sessions.delete(key);
@@ -140,8 +162,8 @@ export class TranscriptionManager extends EventEmitter {
       const connection = this.deps.createSession({ diarize: this.deps.mode === "diarized" });
       const newSession = SttSession.start(connection, {
         onResult: (payload) => this.handleResult(key, payload),
-        onError: () => this.beginReconnect(key, 0),
-        onClose: () => this.beginReconnect(key, 0),
+        onError: () => this.onSessionFailure(key),
+        onClose: () => this.onSessionFailure(key),
       });
 
       // Guard against the session being torn down/replaced during creation as well.
@@ -166,8 +188,8 @@ export class TranscriptionManager extends EventEmitter {
     const connection = this.deps.createSession({ diarize: this.deps.mode === "diarized" });
     const session = SttSession.start(connection, {
       onResult: (payload) => this.handleResult(key, payload),
-      onError: () => this.beginReconnect(key, 0),
-      onClose: () => this.beginReconnect(key, 0),
+      onError: () => this.onSessionFailure(key),
+      onClose: () => this.onSessionFailure(key),
     });
     const active: ActiveSession = {
       session,
@@ -175,6 +197,7 @@ export class TranscriptionManager extends EventEmitter {
       lastRawTimestampMs: this.deps.meetingStartedAtMs,
       bufferedChunks: [],
       reconnecting: false,
+      failureCount: 0,
     };
     this.sessions.set(key, active);
     return active;
@@ -195,8 +218,16 @@ export class TranscriptionManager extends EventEmitter {
     if (!active) {
       return;
     }
+    // Receiving a real transcript is proof the connection is genuinely alive, so
+    // reset the persistent failure count that drives reconnect backoff/give-up.
+    active.failureCount = 0;
     const endTsRaw = active.lastRawTimestampMs;
-    const startTsRaw = endTsRaw - payload.durationMs;
+    // Clamp the utterance start to never precede the meeting start: if someone is
+    // already talking as the bot joins, the first final transcript's durationMs can
+    // exceed the elapsed meeting time, making startTsRaw < meetingStartedAtMs and
+    // causing normalizeTimestamp to throw. Clamping yields startTs = 0, the best
+    // available approximation for an utterance that began before the meeting.
+    const startTsRaw = Math.max(this.deps.meetingStartedAtMs, endTsRaw - payload.durationMs);
     const startTs = normalizeTimestamp(startTsRaw, this.deps.meetingStartedAtMs);
     const endTs = normalizeTimestamp(endTsRaw, this.deps.meetingStartedAtMs);
 

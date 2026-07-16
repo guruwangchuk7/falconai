@@ -65,6 +65,73 @@ describe("TranscriptionManager (per-participant mode)", () => {
     });
   });
 
+  it("clamps startTs to 0 when an utterance's duration predates the meeting start", () => {
+    // Someone is already talking as the bot joins: the first final transcript's
+    // durationMs (5000) exceeds the elapsed meeting time at the last audio chunk
+    // (raw ts 100, meetingStartedAtMs 0), so startTsRaw would be -4900. Without the
+    // clamp, normalizeTimestamp throws; with it, startTs pins to 0.
+    const s1 = makeFakeSession();
+    const createSession = vi.fn(() => s1.connection);
+    const onTranscriptEvent = vi.fn();
+    const manager = new TranscriptionManager({
+      mode: "per-participant",
+      createSession,
+      inactivityTimeoutMs: 60_000,
+      meetingStartedAtMs: 0,
+      onTranscriptEvent,
+      now: () => 0,
+    });
+
+    manager.handleAudioChunk("p1", Buffer.from([1]), 100);
+
+    expect(() => {
+      s1.handlers.transcript({
+        text: "already talking",
+        isFinal: true,
+        durationMs: 5000,
+        confidence: 0.9,
+      });
+    }).not.toThrow();
+
+    expect(onTranscriptEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ startTs: 0, endTs: 100, text: "already talking" })
+    );
+  });
+
+  it("closeAll() closes every open session and clears tracking", () => {
+    const created: ReturnType<typeof makeFakeSession>[] = [];
+    const createSession = vi.fn(() => {
+      const s = makeFakeSession();
+      created.push(s);
+      return s.connection;
+    });
+    const manager = new TranscriptionManager({
+      mode: "per-participant",
+      createSession,
+      inactivityTimeoutMs: 60_000,
+      meetingStartedAtMs: 0,
+      onTranscriptEvent: vi.fn(),
+      now: () => 0,
+    });
+
+    manager.handleAudioChunk("p1", Buffer.from([1]), 100);
+    manager.handleAudioChunk("p2", Buffer.from([2]), 200);
+    manager.handleAudioChunk("p3", Buffer.from([3]), 300);
+    expect(created).toHaveLength(3);
+
+    manager.closeAll();
+
+    for (const s of created) {
+      expect(s.finish).toHaveBeenCalledTimes(1);
+    }
+
+    // The map is now empty: a later inactivity sweep has nothing to close.
+    manager.checkInactivity(10_000_000);
+    for (const s of created) {
+      expect(s.finish).toHaveBeenCalledTimes(1); // still 1, not re-closed
+    }
+  });
+
   it("closes a participant's session immediately when they leave", () => {
     const s1 = makeFakeSession();
     const createSession = vi.fn(() => s1.connection);

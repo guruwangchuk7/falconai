@@ -26,11 +26,12 @@ export function wireTranscriptionPipeline(
   const { pipeline, createSession, inactivityTimeoutMs = 5 * 60_000 } = deps;
 
   let meetingId = "";
+  let meetingStartedAtMs = 0;
   let transcriptionManager: TranscriptionManager | undefined;
 
   zoomBotAdapter.on("meetingStarted", (mId, participants) => {
     meetingId = mId;
-    const meetingStartedAtMs = Date.now();
+    meetingStartedAtMs = Date.now();
     transcriptionManager = new TranscriptionManager({
       mode: "per-participant",
       createSession,
@@ -39,7 +40,10 @@ export function wireTranscriptionPipeline(
       onTranscriptEvent: (event) => pipeline.handleTranscriptEvent({ ...event, meetingId }),
       now: () => Date.now(),
     });
-    void pipeline.handleMeetingStarted(mId, meetingStartedAtMs, participants);
+    // The started event's timestamp is 0 by definition -- it is the reference point
+    // itself, keeping lifecycle timestamps on the same meeting-relative timeline as
+    // transcript startTs/endTs.
+    void pipeline.handleMeetingStarted(mId, 0, participants);
   });
   zoomBotAdapter.on("audioChunk", (participantId, buffer, timestamp) => {
     transcriptionManager?.handleAudioChunk(participantId, buffer, timestamp);
@@ -51,7 +55,14 @@ export function wireTranscriptionPipeline(
     transcriptionManager?.handleParticipantLeft(participantId);
   });
   zoomBotAdapter.on("meetingEnded", (status) => {
-    void pipeline.handleMeetingEnded(meetingId, Date.now(), status);
+    // Explicitly tear down all open Deepgram sessions for the ending meeting rather
+    // than leaving them to the 5-minute inactivity timeout (a billable leak that
+    // would otherwise become unbounded once transcriptionManager is reassigned on
+    // the next meeting, making the previous meeting's sessions unreachable).
+    transcriptionManager?.closeAll();
+    // The ended event's timestamp is elapsed ms since the meeting started, keeping
+    // it on the same meeting-relative timeline as transcript timestamps.
+    void pipeline.handleMeetingEnded(meetingId, Date.now() - meetingStartedAtMs, status);
   });
 
   setInterval(() => transcriptionManager?.checkInactivity(Date.now()), 30_000);

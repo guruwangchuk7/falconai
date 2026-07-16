@@ -120,6 +120,108 @@ describe("TranscriptionManager reconnect", () => {
     expect(createSession).toHaveBeenCalledTimes(2);
   });
 
+  it("escalates the persistent failure count across async failures and eventually gives up", async () => {
+    // The real Deepgram client never throws synchronously from SttSession.start --
+    // it signals failure asynchronously via onError/onClose. With reconnect.retries
+    // = 2, three consecutive async failures (with no successful transcript between
+    // them) must escalate the persistent failure count 0 -> 1 -> 2 and then give up,
+    // rather than resetting to attempt 0 on every failure and retrying forever.
+    const created: ReturnType<typeof makeFakeSession>[] = [];
+    const createSession = vi.fn(() => {
+      const s = makeFakeSession();
+      created.push(s);
+      return s.connection;
+    });
+
+    const manager = new TranscriptionManager({
+      mode: "per-participant",
+      createSession,
+      inactivityTimeoutMs: 60_000,
+      meetingStartedAtMs: 0,
+      onTranscriptEvent: vi.fn(),
+      now: () => 0,
+      maxBufferedChunks: 10,
+      reconnect: { retries: 2, baseDelayMs: 1 },
+      sleep: async () => {},
+    });
+
+    manager.handleAudioChunk("p1", Buffer.from([1]), 100);
+    expect(createSession).toHaveBeenCalledTimes(1);
+
+    // Failure 1 (attempt 0 -> reconnect).
+    created[0].handlers.close();
+    await vi.waitFor(() => expect(createSession).toHaveBeenCalledTimes(2));
+
+    // Failure 2 (attempt 1 -> reconnect).
+    created[1].handlers.close();
+    await vi.waitFor(() => expect(createSession).toHaveBeenCalledTimes(3));
+
+    // Failure 3 (attempt 2 >= retries -> give up, no further reconnect).
+    created[2].handlers.close();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(createSession).toHaveBeenCalledTimes(3);
+
+    // The session was given up on and removed: fresh audio opens a brand-new session
+    // (createSession #4), which could not happen if the old entry still existed.
+    manager.handleAudioChunk("p1", Buffer.from([9]), 200);
+    expect(createSession).toHaveBeenCalledTimes(4);
+  });
+
+  it("resets the failure budget after a real transcript (proof of life)", async () => {
+    // Mirrors the ZoomBotAdapter healthy-period test: after one failure + successful
+    // reconnect, a real transcript proves the connection is alive and must reset the
+    // failure count, so a later burst of failures gets the FULL retry budget again
+    // rather than a reduced one carried over from before the healthy period.
+    const created: ReturnType<typeof makeFakeSession>[] = [];
+    const createSession = vi.fn(() => {
+      const s = makeFakeSession();
+      created.push(s);
+      return s.connection;
+    });
+    const onTranscriptEvent = vi.fn();
+
+    const manager = new TranscriptionManager({
+      mode: "per-participant",
+      createSession,
+      inactivityTimeoutMs: 60_000,
+      meetingStartedAtMs: 0,
+      onTranscriptEvent,
+      now: () => 0,
+      maxBufferedChunks: 10,
+      reconnect: { retries: 2, baseDelayMs: 1 },
+      sleep: async () => {},
+    });
+
+    manager.handleAudioChunk("p1", Buffer.from([1]), 100);
+
+    // One failure + successful reconnect.
+    created[0].handlers.close();
+    await vi.waitFor(() => expect(createSession).toHaveBeenCalledTimes(2));
+
+    // Proof of life on the reconnected session resets the persistent failure count.
+    created[1].handlers.transcript({
+      text: "still here",
+      isFinal: true,
+      durationMs: 20,
+      confidence: 0.9,
+    });
+    expect(onTranscriptEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "still here" })
+    );
+
+    // A fresh burst now gets the FULL retries budget (2) again: two reconnects...
+    created[1].handlers.close();
+    await vi.waitFor(() => expect(createSession).toHaveBeenCalledTimes(3));
+    created[2].handlers.close();
+    await vi.waitFor(() => expect(createSession).toHaveBeenCalledTimes(4));
+
+    // ...and only the third post-reset failure gives up. Had the counter NOT reset,
+    // give-up would have happened one failure sooner (never reaching createSession #4).
+    created[3].handlers.close();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(createSession).toHaveBeenCalledTimes(4);
+  });
+
   it("aborts a stale reconnect if the session is removed while sleeping, without resurrecting it", async () => {
     const first = makeFakeSession();
     const second = makeFakeSession();

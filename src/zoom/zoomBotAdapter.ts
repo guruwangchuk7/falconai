@@ -18,6 +18,7 @@ const NORMAL_LEAVE_REASON = 0;
 export class ZoomBotAdapter extends EventEmitter {
   private meetingId?: string;
   private readonly sleep: (ms: number) => Promise<void>;
+  private reconnectAttempt = 0;
 
   constructor(private readonly deps: ZoomBotAdapterDeps) {
     super();
@@ -38,7 +39,7 @@ export class ZoomBotAdapter extends EventEmitter {
     participants: Participant[];
   }): Promise<void> {
     this.meetingId = payload.meetingId;
-    const connected = await this.connectClient(payload.joinPayload, 0);
+    const connected = await this.connectClient(payload.joinPayload);
     if (connected) {
       this.emit("meetingStarted", payload.meetingId, payload.participants);
     }
@@ -49,7 +50,7 @@ export class ZoomBotAdapter extends EventEmitter {
     this.emit("meetingEnded", "ended");
   }
 
-  private async connectClient(joinPayload: unknown, attempt: number): Promise<boolean> {
+  private async connectClient(joinPayload: unknown): Promise<boolean> {
     const client = this.deps.createClient();
     client.setAudioParams(this.deps.audioParams);
     client.onAudioData((buffer, _size, timestamp, metadata) => {
@@ -60,23 +61,26 @@ export class ZoomBotAdapter extends EventEmitter {
     });
     client.onLeave((reason) => {
       if (reason === NORMAL_LEAVE_REASON) return;
-      void this.retryConnect(joinPayload, attempt, new Error(`unexpected leave, reason=${reason}`));
+      void this.retryConnect(joinPayload, new Error(`unexpected leave, reason=${reason}`));
     });
 
     try {
       await client.join(joinPayload);
+      this.reconnectAttempt = 0; // connection confirmed -- reset the backoff baseline
       return true;
     } catch (err) {
-      return this.retryConnect(joinPayload, attempt, err);
+      return this.retryConnect(joinPayload, err);
     }
   }
 
-  private async retryConnect(joinPayload: unknown, attempt: number, _err: unknown): Promise<boolean> {
-    if (attempt >= this.deps.reconnect.retries) {
+  private async retryConnect(joinPayload: unknown, _err: unknown): Promise<boolean> {
+    if (this.reconnectAttempt >= this.deps.reconnect.retries) {
       this.emit("meetingEnded", "ended_error");
       return false;
     }
+    const attempt = this.reconnectAttempt;
+    this.reconnectAttempt += 1;
     await this.sleep(this.deps.reconnect.baseDelayMs * 2 ** attempt);
-    return this.connectClient(joinPayload, attempt + 1);
+    return this.connectClient(joinPayload);
   }
 }

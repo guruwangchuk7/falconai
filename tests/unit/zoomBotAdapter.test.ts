@@ -154,6 +154,59 @@ describe("ZoomBotAdapter", () => {
     expect(onEnded).toHaveBeenCalledWith("ended_error");
   });
 
+  it("resets the reconnect budget after a healthy reconnection", async () => {
+    const { source, handlers } = makeFakeWebhookSource();
+    const clientHandlers: Record<string, Function> = {};
+    let joinShouldFail = false;
+    let joinCallCount = 0;
+    const client: RtmsClientLike = {
+      join: vi.fn(async () => {
+        joinCallCount += 1;
+        if (joinShouldFail) throw new Error("connect failed");
+      }),
+      leave: vi.fn(),
+      setAudioParams: vi.fn(),
+      onAudioData: vi.fn(),
+      onActiveSpeakerEvent: vi.fn(),
+      onJoinConfirm: vi.fn(),
+      onLeave: (cb) => (clientHandlers.leave = cb),
+    };
+    const adapter = new ZoomBotAdapter({
+      webhookSource: source,
+      createClient: () => client,
+      audioParams: {},
+      reconnect: { retries: 2, baseDelayMs: 1 },
+      sleep: async () => {},
+    });
+
+    const onStarted = vi.fn();
+    const onEnded = vi.fn();
+    adapter.on("meetingStarted", onStarted);
+    adapter.on("meetingEnded", onEnded);
+
+    // Initial successful join.
+    await handlers.started({ meetingId: "m1", joinPayload: {}, participants: [] });
+    expect(onStarted).toHaveBeenCalledTimes(1);
+    expect(joinCallCount).toBe(1);
+
+    // Unexpected (non-normal) leave after a healthy period -> exactly one reconnect,
+    // which succeeds again. This success must reset the attempt counter to 0.
+    clientHandlers.leave(1);
+    await vi.waitFor(() => expect(joinCallCount).toBe(2));
+    expect(onEnded).not.toHaveBeenCalled();
+
+    // Now the connection drops again and every reconnect fails. Because the counter
+    // reset after the healthy reconnection, exhaustion must take the FULL budget
+    // again: 2 failing join attempts (retries=2) before ended_error -- not a reduced
+    // budget carried over from before the healthy period (which would give up after 1).
+    joinShouldFail = true;
+    clientHandlers.leave(1);
+
+    await vi.waitFor(() => expect(onEnded).toHaveBeenCalledWith("ended_error"));
+    // 1 (initial) + 1 (healthy reconnect) + 2 (full failing budget) = 4.
+    expect(joinCallCount).toBe(4);
+  });
+
   it("does not emit meetingStarted when the initial connection exhausts all retries", async () => {
     const { source, handlers } = makeFakeWebhookSource();
     let joinCallCount = 0;
