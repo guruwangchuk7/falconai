@@ -38,6 +38,12 @@ export class ZoomBotAdapter extends EventEmitter {
     joinPayload: unknown;
     participants: Participant[];
   }): Promise<void> {
+    // Always start a new meeting with a full retry budget, regardless of how the
+    // previous meeting ended -- this instance is created once and reused for every
+    // meeting the process handles sequentially, so a prior meeting that exhausted its
+    // retries (leaving reconnectAttempt at its max) must not carry that exhaustion
+    // into the next meeting's first join attempt.
+    this.reconnectAttempt = 0;
     this.meetingId = payload.meetingId;
     const connected = await this.connectClient(payload.joinPayload);
     if (connected) {

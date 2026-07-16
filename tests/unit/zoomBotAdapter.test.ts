@@ -240,4 +240,49 @@ describe("ZoomBotAdapter", () => {
     expect(onEnded).toHaveBeenCalledWith("ended_error");
     expect(onStarted).not.toHaveBeenCalled();
   });
+
+  it("gives a fresh full retry budget to a new meeting even after the previous meeting exhausted its retries", async () => {
+    const { source, handlers } = makeFakeWebhookSource();
+    let joinCallCount = 0;
+    let joinShouldFail = true;
+    const client: RtmsClientLike = {
+      join: vi.fn(async () => {
+        joinCallCount += 1;
+        if (joinShouldFail) throw new Error("connect failed");
+      }),
+      leave: vi.fn(),
+      setAudioParams: vi.fn(),
+      onAudioData: vi.fn(),
+      onActiveSpeakerEvent: vi.fn(),
+      onJoinConfirm: vi.fn(),
+      onLeave: vi.fn(),
+    };
+    const adapter = new ZoomBotAdapter({
+      webhookSource: source,
+      createClient: () => client,
+      audioParams: {},
+      reconnect: { retries: 2, baseDelayMs: 1 },
+    });
+
+    const onEnded = vi.fn();
+    adapter.on("meetingEnded", onEnded);
+
+    // First meeting: every join attempt fails, exhausting the full retry budget and
+    // leaving reconnectAttempt at its max (this is the state that used to leak into
+    // the next meeting before the fix).
+    await handlers.started({ meetingId: "m1", joinPayload: {}, participants: [] });
+    expect(joinCallCount).toBe(3); // initial attempt + 2 retries
+    expect(onEnded).toHaveBeenCalledWith("ended_error");
+
+    // Second meeting: join fails just as many times as the retry budget allows. If
+    // reconnectAttempt were not reset, this would immediately hit ended_error with
+    // zero retries (joinCallCount would stay at 3 + 1 = 4). With the fix, the new
+    // meeting gets a full fresh budget: initial attempt + 2 retries = 3 more calls.
+    joinCallCount = 0;
+    onEnded.mockClear();
+    await handlers.started({ meetingId: "m2", joinPayload: {}, participants: [] });
+
+    expect(joinCallCount).toBe(3); // initial attempt + 2 retries, full budget again
+    expect(onEnded).toHaveBeenCalledWith("ended_error");
+  });
 });

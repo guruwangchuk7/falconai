@@ -60,9 +60,21 @@ export function wireTranscriptionPipeline(
     // would otherwise become unbounded once transcriptionManager is reassigned on
     // the next meeting, making the previous meeting's sessions unreachable).
     transcriptionManager?.closeAll();
-    // The ended event's timestamp is elapsed ms since the meeting started, keeping
-    // it on the same meeting-relative timeline as transcript timestamps.
-    void pipeline.handleMeetingEnded(meetingId, Date.now() - meetingStartedAtMs, status);
+    // Clear the reference so any late audioChunk/activeSpeaker/participantLeft event
+    // arriving after this point (e.g. a straggling webhook delivery) is a no-op
+    // instead of silently re-opening -- and then leaking -- a new session via the
+    // optional-chained handlers above.
+    transcriptionManager = undefined;
+    // The ended event's timestamp is normally elapsed ms since the meeting started,
+    // keeping it on the same meeting-relative timeline as transcript timestamps. But
+    // meetingEnded can fire without a prior meetingStarted -- e.g. ZoomBotAdapter
+    // emits "ended_error" when it exhausts reconnect retries before ever completing a
+    // join, in which case meetingStartedAtMs is still its initial 0. Guard against
+    // computing a nonsensical elapsed time relative to the Unix epoch in that case
+    // (meetingStartedAtMs is always Date.now()-derived and thus > 0 once a meeting has
+    // actually started).
+    const elapsedMs = meetingStartedAtMs > 0 ? Date.now() - meetingStartedAtMs : 0;
+    void pipeline.handleMeetingEnded(meetingId, elapsedMs, status);
   });
 
   setInterval(() => transcriptionManager?.checkInactivity(Date.now()), 30_000);
