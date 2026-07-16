@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { describe, it, expect, afterAll } from "vitest";
 import { RedisTranscriptPublisher } from "../../src/pipeline/redisTranscriptPublisher";
 import { closeRedisClient, getRedisClient } from "../../src/redis/client";

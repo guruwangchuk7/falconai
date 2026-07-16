@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { describe, it, expect, afterAll } from "vitest";
 import { createClient } from "redis";
 
