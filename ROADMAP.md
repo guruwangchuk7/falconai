@@ -1,5 +1,11 @@
 # Falcon Roadmap
 
+## Verified 2026-07-16: real Deepgram/Postgres/Redis pipeline works end-to-end
+
+Since RTMS itself is blocked by billing (below), verified everything downstream of the Zoom bot-join layer against a real recorded voice clip instead: `scripts/live-audio-verification.ts` (`npm run verify:live-audio -- <audio-file>`) streamed real audio through the real `TranscriptionManager` → real Deepgram → real `TranscriptPipeline` → real Postgres/Redis. Result: correct live transcription ("Hi. My name is Guru Wanchuk.", confidence 0.998) landed in both.
+
+Along the way this found and fixed a **real, previously-unknown bug**: `@deepgram/sdk@5.5.0`'s `listen.v1.connect()` wrapper never reached `OPEN` in this environment even with valid credentials (`readyState` stuck at `CLOSED`, no error/close event, no debug output). Isolated via the `ws` package succeeding immediately with an identical URL/headers — the fault was in the SDK wrapper itself. A second bug compounded it: Deepgram's real auth header is `Authorization: Token <apiKey>`, not the bare key. `src/transcription/deepgramClient.ts` now talks to Deepgram via `ws` directly; `@deepgram/sdk` is no longer a dependency. See `CLAUDE.md`'s "Real vs. fake adapters" section for the full detail.
+
 ## Right now: live-verifying the transcription pipeline (Task 16)
 
 Sub-project 1 (meeting ingestion & transcription) is fully built, reviewed, and merged to `master` — 42/42 automated tests pass. The one thing left is Task 16: proving it actually works against a real Zoom meeting, since `@zoom/rtms` can't run on Windows and had never been executed until this session.
