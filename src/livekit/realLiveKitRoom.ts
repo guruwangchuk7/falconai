@@ -15,14 +15,21 @@ export function createRealLiveKitRoom(): LiveKitRoomLike {
     if (!(track instanceof RemoteAudioTrack)) return;
     const stream = new AudioStream(track, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS);
     void (async () => {
-      for await (const frame of stream) {
-        const buffer = Buffer.from(
-          frame.data.buffer,
-          frame.data.byteOffset,
-          frame.data.byteLength
+      try {
+        for await (const frame of stream) {
+          const buffer = Buffer.from(
+            frame.data.buffer,
+            frame.data.byteOffset,
+            frame.data.byteLength
+          );
+          const timestamp = Date.now();
+          for (const cb of audioDataCallbacks) cb(participant.identity, buffer, timestamp);
+        }
+      } catch (err) {
+        console.error(
+          `LiveKit audio stream iteration failed for participant ${participant.identity}:`,
+          err
         );
-        const timestamp = Date.now();
-        for (const cb of audioDataCallbacks) cb(participant.identity, buffer, timestamp);
       }
     })();
   });
