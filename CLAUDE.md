@@ -8,6 +8,8 @@ Falcon Transcription Service: a Node.js/TypeScript service that joins a Zoom mee
 
 Read `docs/superpowers/specs/2026-07-15-meeting-ingestion-transcription-pipeline-design.md` for the full design rationale and `docs/superpowers/plans/2026-07-15-meeting-ingestion-transcription-pipeline.md` for the task-by-task implementation plan (both still accurate references for *why* things are shaped the way they are).
 
+**In progress**: Zoom RTMS requires purchased "Developer Pack" credits unavailable on this account, so a second meeting-source is being built on LiveKit Cloud (free tier) instead — see `docs/superpowers/specs/2026-07-16-livekit-meeting-ingestion-design.md` and `docs/superpowers/plans/2026-07-16-livekit-meeting-ingestion.md`. `LiveKitBotAdapter` is designed as a drop-in sibling of `ZoomBotAdapter` (same five-event surface), so `TranscriptionManager`/`TranscriptPipeline` need no changes. `ROADMAP.md` tracks current status.
+
 ## Commands
 
 ```bash
