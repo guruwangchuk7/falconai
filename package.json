@@ -12,15 +12,18 @@
     "dev": "tsx src/server/index.ts",
     "migrate": "tsx src/db/runMigrate.ts",
     "spike:rtms": "tsx scripts/rtms-capability-check.ts",
-    "verify:live-audio": "tsx scripts/live-audio-verification.ts"
+    "verify:live-audio": "tsx scripts/live-audio-verification.ts",
+    "spike:livekit": "tsx scripts/livekit-capability-check.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@livekit/rtc-node": "^0.13.31",
     "@zoom/rtms": "^1.1.0",
     "dotenv": "^17.4.2",
+    "livekit-server-sdk": "^2.17.0",
     "pg": "^8.22.0",
     "redis": "^6.1.0",
     "ws": "^8.21.1"
