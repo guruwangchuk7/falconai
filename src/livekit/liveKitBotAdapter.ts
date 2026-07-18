@@ -19,12 +19,14 @@ export class LiveKitBotAdapter extends EventEmitter {
     super();
     this.deps.webhookSource.onRoomStarted((payload) => this.handleRoomStarted(payload));
     this.deps.webhookSource.onRoomFinished((payload) => this.handleRoomFinished(payload));
-    this.deps.webhookSource.onParticipantJoined(({ participant }) =>
-      this.emit("participantJoined", participant)
-    );
-    this.deps.webhookSource.onParticipantLeft(({ participantId }) =>
-      this.emit("participantLeft", participantId)
-    );
+    this.deps.webhookSource.onParticipantJoined(({ meetingId, participant }) => {
+      if (meetingId !== this.meetingId) return;
+      this.emit("participantJoined", participant);
+    });
+    this.deps.webhookSource.onParticipantLeft(({ meetingId, participantId }) => {
+      if (meetingId !== this.meetingId) return;
+      this.emit("participantLeft", participantId);
+    });
   }
 
   private async handleRoomStarted(payload: {
@@ -38,14 +40,23 @@ export class LiveKitBotAdapter extends EventEmitter {
       this.emit("audioChunk", participantId, buffer, timestamp);
     });
     room.onDisconnected((reason) => this.handleDisconnected(reason));
-    await room.connect(this.deps.url, payload.botToken);
+    try {
+      await room.connect(this.deps.url, payload.botToken);
+    } catch (err) {
+      console.error("LiveKitBotAdapter: room.connect() failed", err);
+      this.meetingId = undefined;
+      this.emit("meetingEnded", "ended_error");
+      return;
+    }
     this.room = room;
     this.emit("meetingStarted", payload.meetingId, payload.participants);
   }
 
   private handleRoomFinished(payload: { meetingId: string }): void {
     if (payload.meetingId !== this.meetingId) return;
-    void this.room?.disconnect();
+    this.room?.disconnect().catch((err) => {
+      console.error("LiveKitBotAdapter: room.disconnect() failed", err);
+    });
     this.room = undefined;
     this.emit("meetingEnded", "ended");
   }
