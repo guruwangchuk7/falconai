@@ -244,6 +244,31 @@ describe("LiveKitBotAdapter", () => {
     expect(onEnded).toHaveBeenCalledWith("ended_error");
   });
 
+  it("does not double-emit meetingEnded when the room's own Disconnected event fires after a clean room-finished teardown", async () => {
+    const { source, handlers } = makeFakeWebhookSource();
+    const { room, handlers: roomHandlers } = makeFakeRoom();
+    const adapter = new LiveKitBotAdapter({
+      webhookSource: source,
+      createRoom: () => room,
+      url: "wss://example.livekit.cloud",
+    });
+
+    await handlers.roomStarted({ meetingId: "falcon-meet", botToken: "bot-jwt", participants: [] });
+
+    const onEnded = vi.fn();
+    adapter.on("meetingEnded", onEnded);
+
+    // Clean, webhook-driven teardown.
+    handlers.roomFinished({ meetingId: "falcon-meet" });
+
+    // The real @livekit/rtc-node SDK fires its own Disconnected event as a side effect of
+    // the self-initiated disconnect() call above -- simulate that arriving afterward.
+    roomHandlers.disconnected("CLIENT_INITIATED");
+
+    expect(onEnded).toHaveBeenCalledTimes(1);
+    expect(onEnded).toHaveBeenCalledWith("ended");
+  });
+
   it("ignores a room-finished webhook for a different meeting", async () => {
     const { source, handlers } = makeFakeWebhookSource();
     const { room } = makeFakeRoom();

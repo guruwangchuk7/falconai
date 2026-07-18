@@ -67,6 +67,13 @@ export class LiveKitBotAdapter extends EventEmitter {
     // this is already the terminal signal -- no separate retry loop needed here, unlike
     // ZoomBotAdapter's manual reconnectAttempt/backoff (verify this against Task 1's
     // findings before relying on it in production).
+    //
+    // Guard: a clean handleRoomFinished-driven teardown already set this.room = undefined
+    // synchronously before calling room.disconnect(), so if the SDK also fires its own
+    // Disconnected event as a side effect of that self-initiated disconnect(), this is a
+    // no-op -- otherwise it would double-emit meetingEnded (a correct "ended" immediately
+    // followed by a spurious "ended_error").
+    if (!this.room) return;
     this.room = undefined;
     this.emit("meetingEnded", "ended_error");
   }
