@@ -8,7 +8,7 @@ Falcon Transcription Service: a Node.js/TypeScript service that joins a Zoom mee
 
 Read `docs/superpowers/specs/2026-07-15-meeting-ingestion-transcription-pipeline-design.md` for the full design rationale and `docs/superpowers/plans/2026-07-15-meeting-ingestion-transcription-pipeline.md` for the task-by-task implementation plan (both still accurate references for *why* things are shaped the way they are).
 
-**In progress**: Zoom RTMS requires purchased "Developer Pack" credits unavailable on this account, so a second meeting-source is being built on LiveKit Cloud (free tier) instead — see `docs/superpowers/specs/2026-07-16-livekit-meeting-ingestion-design.md` and `docs/superpowers/plans/2026-07-16-livekit-meeting-ingestion.md`. `LiveKitBotAdapter` is designed as a drop-in sibling of `ZoomBotAdapter` (same five-event surface), so `TranscriptionManager`/`TranscriptPipeline` need no changes. Tasks 1-10 of that plan are complete (54/54 automated tests passing); the final whole-branch review found a likely `meetingEnded` double-emit on clean meeting finish that hasn't been fixed yet (needs a decision — see ROADMAP.md). Task 11 (live test with real participants) is deferred until the user sets up a LiveKit Cloud account. `ROADMAP.md` tracks current status in detail.
+**In progress**: Zoom RTMS requires purchased "Developer Pack" credits unavailable on this account, so a second meeting-source ("Falcon Meet") was built on LiveKit Cloud (free tier) instead — see the "LiveKit-based ingestion" section below for the architecture, and `ROADMAP.md` for current status (build complete, live verification pending the user's LiveKit Cloud account).
 
 ## Commands
 
@@ -22,12 +22,14 @@ npm run dev                           # tsx src/server/index.ts -- the real serv
 npm run migrate                       # tsx src/db/runMigrate.ts -- applies src/db/schema.sql
 npm run spike:rtms                    # tsx scripts/rtms-capability-check.ts -- manual Zoom RTMS probe, see Task 1 notes below
 npm run verify:live-audio -- <file>   # tsx scripts/live-audio-verification.ts -- real Deepgram/Postgres/Redis test from an audio file, no Zoom needed
+npm run dev:livekit                   # tsx src/server/livekitIndex.ts -- the LiveKit ("Falcon Meet") server entry point, sibling to `npm run dev`
+npm run spike:livekit                 # tsx scripts/livekit-capability-check.ts -- manual LiveKit Cloud probe, see LiveKit Architecture section below
 ```
 
 Local dependencies for integration/contract tests (not started automatically):
 - Postgres reachable at `DATABASE_URL`, with `npm run migrate` already run against database `falcon_transcription`.
 - Redis reachable at `REDIS_URL`.
-- Copy `.env.example` to `.env` and fill in `DATABASE_URL`/`REDIS_URL` at minimum; `ZM_RTMS_CLIENT`/`ZM_RTMS_SECRET`/`ZOOM_WEBHOOK_SECRET_TOKEN`/`DEEPGRAM_API_KEY` are only needed to run the real server (`npm run dev`) against a live meeting.
+- Copy `.env.example` to `.env` and fill in `DATABASE_URL`/`REDIS_URL` at minimum; `ZM_RTMS_CLIENT`/`ZM_RTMS_SECRET`/`ZOOM_WEBHOOK_SECRET_TOKEN`/`DEEPGRAM_API_KEY` are only needed to run the real Zoom server (`npm run dev`) against a live meeting; `LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`/`LIVEKIT_URL` are only needed to run the LiveKit server (`npm run dev:livekit`) or its capability spike (`npm run spike:livekit`).
 
 **`@zoom/rtms` cannot run on Windows** — no native binary for that platform (its own `package.json` restricts `os` to `linux`/`darwin`). `npm install` requires `--force` on Windows for this reason. `npm run dev`, `realRtmsClient.ts`, `realWebhookSource.ts`, and anything that imports `@zoom/rtms` transitively can only be *type-checked* (`npm run build`), never executed, on Windows. This is a real, permanent platform constraint, not a todo.
 
@@ -68,8 +70,30 @@ Defined in `src/types/transcriptEvent.ts`: `TranscriptEvent` (fixed shape: `vers
 
 `TranscriptionManager.handleResult` calls `onTranscriptEvent` synchronously and never awaits it (it's typed `() => void`) — production code deliberately doesn't block transcript handling on network I/O. That means any integration test asserting on the resulting Postgres row or Redis stream entry cannot know exactly when that fire-and-forget write lands. A fixed `setTimeout` before the assertion is a race (it passed on most machines/runs but occasionally read the assertion before the write completed — this actually happened and was fixed in `tests/integration/pipeline.integration.test.ts`). Poll for the actual data instead — see that file's `waitFor` helper — for any new integration test with the same shape.
 
+### LiveKit-based ingestion ("Falcon Meet") — the second meeting-source
+
+A parallel entry point, not a replacement: `src/server/livekitIndex.ts` (run via `npm run dev:livekit`) lets real people join a browser-based meeting room instead of Zoom, while feeding the *same, unmodified* `TranscriptionManager` → `TranscriptPipeline` → Postgres/Redis pipeline described above.
+
+```
+Browser (public/join.html) ──WebRTC──┐
+                                      ├─ LiveKit Cloud room ─→ LiveKitBotAdapter ─→ wireTranscriptionPipeline ─→ (same pipeline as Zoom)
+Bot (server-side, subscribe-only) ───┘
+```
+
+- **`MeetingSourceAdapter`** (`src/server/wireTranscriptionPipeline.ts`) — the structural interface both `ZoomBotAdapter` and `LiveKitBotAdapter` satisfy (`meetingStarted`, `audioChunk`, `activeSpeaker`, `participantLeft`, `meetingEnded`), letting `wireTranscriptionPipeline()` accept either without caring which. `ZoomBotAdapter` satisfies it structurally via `EventEmitter`'s loose `.on()` signature — it doesn't declare `implements MeetingSourceAdapter`. This is the *only* pre-existing file the LiveKit work modified, and only by type-widening a parameter; the function body's logic is unchanged.
+
+- **`LiveKitBotAdapter`** (`src/livekit/liveKitBotAdapter.ts`) — architectural sibling of `ZoomBotAdapter`: composes a `LiveKitWebhookSource` (room started/finished + participant joined/left, from LiveKit Cloud's webhooks) and a `LiveKitRoomLike` (the bot's own room connection) into the same event surface. Unlike `ZoomBotAdapter`'s manual `reconnectAttempt`/backoff, reconnection is delegated to `@livekit/rtc-node`'s `Room` itself — `RoomEvent.Disconnected` is treated as the terminal "SDK has given up" signal (unverified against real behavior as of this writing — see "What's verified" below). Every webhook handler guards on `payload.meetingId === this.meetingId` before acting, since — like `ZoomBotAdapter` — one adapter instance is reused across every meeting the process ever handles; a stale/late webhook for a torn-down meeting must not affect the current one. `handleDisconnected` also guards on `this.room` being non-`undefined`, specifically to suppress a spurious second `meetingEnded` emission: a clean, webhook-driven `handleRoomFinished` call disconnects the room itself, which likely also fires the room's own `Disconnected` event as a side effect — without the guard this would double-emit `meetingEnded` (first `"ended"`, then a bogus `"ended_error"`), corrupting the Redis Stream contract.
+
+- **`realLiveKitRoom.ts`** / **`realLiveKitWebhookSource.ts`** — the real implementations of `LiveKitRoomLike`/`LiveKitWebhookSource`, deliberately excluded from unit-test coverage (need a live LiveKit Cloud connection / real signed webhooks), matching the same "real adapters aren't unit-tested" convention as `realRtmsClient.ts`/`realWebhookSource.ts`. `realLiveKitWebhookSource.ts` also mints the bot's own join token on `room_started` (`canPublish: false, canSubscribe: true` — the bot only listens) since that webhook event doesn't carry one; real participant tokens (`src/livekit/mintToken.ts`, served via `GET /token?name=`) get `canPublish: true, canSubscribe: true`. The `room_started` webhook also carries an empty participant list by design — real participant discovery happens via the separate `participant_joined` webhook events that follow — but nothing currently consumes the resulting `participantJoined` emission, so LiveKit meetings' `meeting_lifecycle: started` event always has an empty roster (a known v1 gap; transcript attribution itself is unaffected since each participant's chosen name is used directly as their LiveKit `identity`).
+
+- **`src/server/livekitIndex.ts`** — the composition root, analogous to `src/server/index.ts`: a plain `node:http` server with three routes (`GET /` and `/join.html` serve `public/join.html`; `GET /token?name=` mints a participant token; `POST /livekit-webhook` hands off to `realLiveKitWebhookSource`'s webhook handler). `public/join.html` is a single static page (LiveKit's browser SDK loaded via CDN, no bundler) — name only, no role selection (role selection is deferred to the future Dynamic Agent Manager sub-project, see `ROADMAP.md`).
+
+New env vars: `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL` (e.g. `wss://your-project.livekit.cloud`), `LIVEKIT_ROOM_NAME` (fixed single room for v1, default `falcon-meet`), `LIVEKIT_HTTP_PORT`. Requires a free LiveKit Cloud account (cloud.livekit.io) with a webhook configured to point at this server's `/livekit-webhook` endpoint.
+
 ### What's verified vs. unverified
 
 **Verified with real audio and real infrastructure**: everything from `TranscriptionManager` downward — real Deepgram transcription, `TranscriptPipeline`, Postgres persistence, and Redis Stream publishing — via `scripts/live-audio-verification.ts` (`npm run verify:live-audio -- <audio-file>`), which found and fixed the `deepgramClient.ts` bug described above. This bypasses only the Zoom-specific bot-join layer.
 
 **Still unverified**: Task 16 of the implementation plan (a live run against a real Zoom meeting) has never been performed, and currently cannot be — RTMS requires purchased Zoom "Developer Pack" credits and a paid host plan, unavailable on this account (Basic/free); see `ROADMAP.md`. `npm run dev` is confirmed to start successfully under WSL2 (Ubuntu) — `@zoom/rtms`'s native binding loads and the webhook HTTP server binds — but no real RTMS webhook has ever reached it. Treat anything touching live Zoom behavior (webhook payload shape, exact event-name string, `onJoinConfirm` reason-code semantics) as unconfirmed until that happens — see `docs/superpowers/notes/zoom-rtms-capability-findings.md`.
+
+**LiveKit path**: unit- and integration-tested only (a synthetic `LiveKitBotAdapter` through the real pipeline/Postgres/Redis) — never run against a real LiveKit Cloud connection. `docs/superpowers/notes/livekit-capability-findings.md` is entirely marked PENDING (no LiveKit Cloud account set up yet), so treat `@livekit/rtc-node`'s real `AudioStream` stability, `Disconnected` reason-code semantics, and reconnection behavior as unconfirmed assumptions, not verified facts, until that live spike (`npm run spike:livekit`) actually runs.
