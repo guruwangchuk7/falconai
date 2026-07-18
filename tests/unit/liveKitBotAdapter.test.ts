@@ -202,4 +202,64 @@ describe("LiveKitBotAdapter", () => {
 
     consoleErrorSpy.mockRestore();
   });
+
+  it("emits a clean meetingEnded when the room-finished webhook fires", async () => {
+    const { source, handlers } = makeFakeWebhookSource();
+    const { room } = makeFakeRoom();
+    const adapter = new LiveKitBotAdapter({
+      webhookSource: source,
+      createRoom: () => room,
+      url: "wss://example.livekit.cloud",
+    });
+
+    await handlers.roomStarted({ meetingId: "falcon-meet", botToken: "bot-jwt", participants: [] });
+
+    const onEnded = vi.fn();
+    adapter.on("meetingEnded", onEnded);
+    handlers.roomFinished({ meetingId: "falcon-meet" });
+
+    expect(room.disconnect).toHaveBeenCalled();
+    expect(onEnded).toHaveBeenCalledWith("ended");
+  });
+
+  it("emits meetingEnded with ended_error when the room disconnects unexpectedly", async () => {
+    const { source, handlers: webhookHandlers } = makeFakeWebhookSource();
+    const { room, handlers: roomHandlers } = makeFakeRoom();
+    const adapter = new LiveKitBotAdapter({
+      webhookSource: source,
+      createRoom: () => room,
+      url: "wss://example.livekit.cloud",
+    });
+
+    await webhookHandlers.roomStarted({
+      meetingId: "falcon-meet",
+      botToken: "bot-jwt",
+      participants: [],
+    });
+
+    const onEnded = vi.fn();
+    adapter.on("meetingEnded", onEnded);
+    roomHandlers.disconnected("SIGNAL_CLOSE");
+
+    expect(onEnded).toHaveBeenCalledWith("ended_error");
+  });
+
+  it("ignores a room-finished webhook for a different meeting", async () => {
+    const { source, handlers } = makeFakeWebhookSource();
+    const { room } = makeFakeRoom();
+    const adapter = new LiveKitBotAdapter({
+      webhookSource: source,
+      createRoom: () => room,
+      url: "wss://example.livekit.cloud",
+    });
+
+    await handlers.roomStarted({ meetingId: "falcon-meet", botToken: "bot-jwt", participants: [] });
+
+    const onEnded = vi.fn();
+    adapter.on("meetingEnded", onEnded);
+    handlers.roomFinished({ meetingId: "some-other-room" });
+
+    expect(onEnded).not.toHaveBeenCalled();
+    expect(room.disconnect).not.toHaveBeenCalled();
+  });
 });
