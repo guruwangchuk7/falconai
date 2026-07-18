@@ -32,6 +32,19 @@ Sub-project 1 (meeting ingestion & transcription) is fully built, reviewed, and 
 
 **Once a webhook does arrive**, next debugging steps if something's still wrong: check `docs/superpowers/notes/zoom-rtms-capability-findings.md` for the specific real-vs-assumed API details already discovered (webhook payload shape, `userId` type, event name spelling), and update `src/zoom/realWebhookSource.ts` / `realRtmsClient.ts` if reality differs from what's coded.
 
+## In progress: LiveKit-based meeting ingestion ("Falcon Meet") — Tasks 1-10 complete, Task 11 pending
+
+Second meeting-source, built as an alternative to Zoom RTMS (blocked on billing, above): `LiveKitBotAdapter` is a drop-in sibling of `ZoomBotAdapter` (same five-event surface via a shared `MeetingSourceAdapter` interface), feeding the same unmodified `TranscriptionManager`/`TranscriptPipeline`/Postgres/Redis pipeline. See `docs/superpowers/specs/2026-07-16-livekit-meeting-ingestion-design.md` and `docs/superpowers/plans/2026-07-16-livekit-meeting-ingestion.md` (11-task plan).
+
+**Tasks 1-10 complete and reviewed** (per-task review + a final whole-branch review), 54/54 automated tests passing. Three plan-mandated bugs found during per-task review were fixed: stale-meetingId leakage on `participantJoined`/`participantLeft` in `LiveKitBotAdapter`, unhandled `room.connect()`/`disconnect()` rejections, and an unhandled-rejection crash risk in the real audio-stream iteration loop.
+
+**The final whole-branch review surfaced one new issue not visible at the single-task level**, before this was tested live:
+- **Likely double-emit of `meetingEnded` on every clean meeting end**: `handleRoomFinished` emits `meetingEnded("ended")` after calling `room.disconnect()`, but the real LiveKit SDK's own `RoomEvent.Disconnected` almost certainly then fires (self-disconnects are typically observable via the client's own event emitter), and `handleDisconnected` has no guard against this — it would unconditionally emit a second, spurious `meetingEnded("ended_error")`, corrupting the Redis Stream (the intentional public contract) and flipping the stored meeting status. Recommended fix: guard `handleDisconnected` with `if (!this.room) return;` (cheap, provably correct for the clean-finish case since `handleRoomFinished` clears `this.room` synchronously before the async `Disconnected` event fires). **Not yet applied** — needs a decision before Task 11.
+- Also noted: LiveKit meetings' `meeting_lifecycle: started` event always carries an empty participant roster (the `participantJoined` webhook event isn't wired to anything) — a known v1 gap, not a bug; transcript attribution itself is unaffected.
+- The `handleDisconnected` "only fires once the SDK has given up" assumption is unverified — Task 1's live capability spike is still marked PENDING (no LiveKit Cloud account set up yet).
+
+**Task 11 (manual test with real participants) requires**: (1) the user to sign up for a free LiveKit Cloud account and add `LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`/`LIVEKIT_URL` to `.env`, (2) running Task 1's live capability spike (`npm run spike:livekit`) to confirm real `AudioStream`/`Disconnected`/reconnection behavior — findings doc at `docs/superpowers/notes/livekit-capability-findings.md` is currently all PENDING, (3) then `npm run dev:livekit` with two real people joining via browser and speaking. Deferred — user will do this later.
+
 ## What's next for the full Falcon vision
 
 Sub-project 1 is only the "ears" — real-time listening, transcription, and publishing to a Redis Stream. Everything below is **not built yet**; each needs its own brainstorm → spec → plan → implementation cycle, same as sub-project 1 did. This list is the long-term architecture already captured in the design spec (`docs/superpowers/specs/2026-07-15-meeting-ingestion-transcription-pipeline-design.md`, "Long-term Falcon architecture" section) as context, not a design.
