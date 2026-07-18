@@ -1,0 +1,49 @@
+<!-- public/join.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Falcon Meet</title>
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+</head>
+<body>
+  <h1>Falcon Meet</h1>
+  <div id="form">
+    <label for="name">Your name</label>
+    <input id="name" type="text" placeholder="Alex" />
+    <button id="joinButton">Join</button>
+  </div>
+  <p id="status"></p>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const joinButton = document.getElementById("joinButton");
+
+    joinButton.addEventListener("click", async () => {
+      const name = document.getElementById("name").value.trim();
+      if (!name) {
+        statusEl.textContent = "Enter a name first.";
+        return;
+      }
+
+      joinButton.disabled = true;
+      statusEl.textContent = "Requesting token...";
+
+      const response = await fetch(`/token?name=${encodeURIComponent(name)}`);
+      if (!response.ok) {
+        statusEl.textContent = "Failed to get a join token.";
+        joinButton.disabled = false;
+        return;
+      }
+      const { token, url } = await response.json();
+
+      statusEl.textContent = "Connecting...";
+      const room = new LivekitClient.Room();
+      await room.connect(url, token);
+      await room.localParticipant.setMicrophoneEnabled(true);
+
+      statusEl.textContent = `Connected as ${name}.`;
+    });
+  </script>
+</body>
+</html>
