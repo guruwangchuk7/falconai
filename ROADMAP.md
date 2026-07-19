@@ -43,7 +43,26 @@ Second meeting-source, built as an alternative to Zoom RTMS (blocked on billing,
 - Also noted: LiveKit meetings' `meeting_lifecycle: started` event always carries an empty participant roster (the `participantJoined` webhook event isn't wired to anything) — a known v1 gap, not a bug; transcript attribution itself is unaffected.
 - The `handleDisconnected` "only fires once the SDK has given up" assumption is unverified — Task 1's live capability spike is still marked PENDING (no LiveKit Cloud account set up yet).
 
-**Task 11 (manual test with real participants) requires**: (1) the user to sign up for a free LiveKit Cloud account and add `LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`/`LIVEKIT_URL` to `.env`, (2) running Task 1's live capability spike (`npm run spike:livekit`) to confirm real `AudioStream`/`Disconnected`/reconnection behavior — findings doc at `docs/superpowers/notes/livekit-capability-findings.md` is currently all PENDING, (3) then `npm run dev:livekit` with two real people joining via browser and speaking. Deferred — user will do this later.
+**Task 11 (manual test with real participants)**: in progress.
+- Done (2026-07-19): user signed up for a free LiveKit Cloud account
+  (`falcon-ai-vzhdw96i.livekit.cloud`) and added
+  `LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`/`LIVEKIT_URL` to `.env`.
+- Done (2026-07-19): ran Task 1's live capability spike (`npm run
+  spike:livekit`) with a real human joining via `meet.livekit.io` and
+  speaking. Confirmed: `AudioStream` runs cleanly with no crashes,
+  delivering correctly-formatted 16kHz mono 10ms frames; a participant
+  leaving fires only `ParticipantDisconnected`, never the bot's own
+  `RoomEvent.Disconnected` (confirms `LiveKitBotAdapter`'s core assumption).
+  Still unobserved: real `Disconnected` reason codes and
+  `Reconnecting`/`Reconnected` behavior (would need the bot's own
+  connection to actually drop, which didn't happen naturally in this
+  session). Full detail in `docs/superpowers/notes/livekit-capability-findings.md`.
+- Remaining: `npm run dev:livekit` with two real people joining via
+  browser and speaking, to verify the full pipeline (transcription →
+  Postgres/Redis) end-to-end over a real LiveKit connection, plus a
+  webhook (via ngrok, same pattern as the Zoom setup) so `room_started`/
+  `room_finished`/`participant_joined`/`participant_left` actually reach
+  the server.
 
 ## What's next for the full Falcon vision
 

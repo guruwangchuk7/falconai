@@ -1,6 +1,8 @@
 # LiveKit Capability Findings
 
-Date: PENDING — requires live LiveKit Cloud account, not yet run
+Date: 2026-07-19 — live spike run against a real LiveKit Cloud project
+(`falcon-ai-vzhdw96i.livekit.cloud`, free tier), with a real human
+participant joining via `meet.livekit.io` and speaking.
 
 ## Runtime environment (confirmed 2026-07-18)
 
@@ -35,43 +37,56 @@ below this point has been exercised against a running LiveKit server.
 
 ## AudioStream stability
 
-**Status: PENDING** — requires live LiveKit Cloud account, not yet run
+**Status: CONFIRMED** (2026-07-19)
 
-This section will record whether constructing an `AudioStream` from a
-`RemoteAudioTrack` on `RoomEvent.TrackSubscribed` runs cleanly for the
-duration of a real session (a past GitHub issue reported crashes in earlier
-SDK versions), or whether it crashes/throws, and under what conditions.
-
-To be filled in by running `npm run spike:livekit` against a real LiveKit
-Cloud project with a human participant joined via `meet.livekit.io`,
-speaking for 10-20 seconds, and observing whether `[audioFrame]` lines
-continue to log without the process crashing.
+Ran cleanly for the full session with no crashes. The bot subscribed to the
+human participant's audio track on `RoomEvent.TrackSubscribed` (two
+`trackSubscribed` events fired for the one participant — one per published
+track kind, audio and video/camera), constructed an `AudioStream(track,
+16000, 1)`, and received several thousand `AudioFrame`s continuously via
+`for await` with no gaps or errors. Every frame matched the constructor's
+requested format exactly: `sampleRate=16000 channels=1
+samplesPerChannel=160` (i.e. 10ms PCM frames at 16kHz mono) — exactly what
+`TranscriptionManager`/Deepgram expect. No sign of the crash a past GitHub
+issue reported in earlier SDK versions.
 
 ## Disconnected reason values
 
-**Status: PENDING** — requires live LiveKit Cloud account, not yet run
+**Status: PARTIALLY CONFIRMED** (2026-07-19)
 
-This section will record the actual `reason` value(s) logged by
-`[disconnected]` for:
-- A clean disconnect (human participant closes the `meet.livekit.io` tab).
-- An unclean/unexpected disconnect (if observable during the test).
+**Key finding, and a correction to this doc's original framing**: a human
+participant leaving the room (closing the `meet.livekit.io` tab) does
+**not** fire the bot's own `RoomEvent.Disconnected` at all. Only
+`RoomEvent.ParticipantDisconnected` fired
+(`[participantDisconnected] human-tester`) — the bot's own `Room` stayed
+connected throughout, exactly as `LiveKitBotAdapter`'s design assumes (see
+`CLAUDE.md`'s "one adapter instance is reused across every meeting" note).
+This confirms `RoomEvent.Disconnected` really is a distinct, bot's-own-
+connection signal, not something a departing participant triggers as a
+side effect — the assumption `handleDisconnected` is built on holds.
 
-Ctrl+C on the spike script itself does not count — that only ends our own
-process and is not a `RoomEvent.Disconnected` event.
+One `[audioFrame]` line was logged for the departed participant's track
+*after* `participantDisconnected` (frame already in flight), then the
+`AudioStream` went quiet — no runaway/infinite frame emission after a
+participant leaves, though the for-await loop's own "audioStream ended"
+log line was never reached within the observation window (the track
+teardown apparently doesn't close the `ReadableStream` immediately/
+synchronously with the `participantDisconnected` event).
 
-To be filled in by running the live spike and closing the human
-participant's tab while the bot script is still running and observing the
-console output.
+**Still not observed**: an actual `RoomEvent.Disconnected` firing on the
+bot's own connection (i.e. real reason-code values). The spike was ended
+via `TaskStop` (a hard process kill), which is the same as the Ctrl+C case
+this doc already called out as not counting — it never exercises a real
+`RoomEvent.Disconnected`. Getting real reason codes would need something
+like revoking the bot's LiveKit Cloud access mid-session or a genuine
+network interruption, which wasn't attempted here.
 
 ## Reconnection behavior
 
-**Status: PENDING** — requires live LiveKit Cloud account, not yet run
+**Status: PENDING** — not observed in this spike run
 
-This section will record whether `RoomEvent.Reconnecting`/`Reconnected` ever
-fired during the test (confirming the SDK's own reconnection logic is
-actually active at runtime, not just present in the type signatures), and
-what triggered it (e.g. a brief network interruption).
-
-To be filled in during the live spike run; if no reconnection is naturally
-triggered, this section should note that explicitly rather than being left
-blank.
+`RoomEvent.Reconnecting`/`Reconnected` never fired — no network
+interruption occurred during the session. Confirming the SDK's own
+reconnection logic actually activates at runtime (not just present in the
+type signatures) still requires a genuine network interruption during a
+live session, which this run didn't naturally produce.
