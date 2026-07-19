@@ -57,12 +57,49 @@ Second meeting-source, built as an alternative to Zoom RTMS (blocked on billing,
   `Reconnecting`/`Reconnected` behavior (would need the bot's own
   connection to actually drop, which didn't happen naturally in this
   session). Full detail in `docs/superpowers/notes/livekit-capability-findings.md`.
-- Remaining: `npm run dev:livekit` with two real people joining via
-  browser and speaking, to verify the full pipeline (transcription →
-  Postgres/Redis) end-to-end over a real LiveKit connection, plus a
-  webhook (via ngrok, same pattern as the Zoom setup) so `room_started`/
-  `room_finished`/`participant_joined`/`participant_left` actually reach
-  the server.
+- In progress (2026-07-19): ran `npm run dev:livekit` end-to-end with a
+  real participant (one person so far, not two) joining via the browser
+  join page, with a public tunnel (`cloudflared tunnel --url
+  http://localhost:8081` — ngrok's Windows binary wasn't downloadable
+  from this environment; `bin.equinox.com` didn't resolve) forwarding
+  LiveKit Cloud's webhook to `/livekit-webhook`. Found and worked around
+  three non-obvious webhook-testing gotchas — now documented in
+  `CLAUDE.md`'s "Local webhook-testing gotchas" section: `room_started`
+  only fires on room creation not every join; a hard-killed spike-script
+  process left a ghost participant that kept the room permanently
+  non-empty; the dashboard's "Send test" button sends a fake `room.name:
+  "Demo Room"` event, not the real room.
+- **Found and fixed a real bug** (this session): Deepgram's `duration`
+  field is a float; multiplying by 1000 for `durationMs` produced
+  fractional milliseconds that Postgres's `bigint` columns reject
+  outright, silently failing *every* transcript persistence during the
+  live test (Postgres failures only log-and-continue, so there was no
+  visible symptom). Fixed in `src/transcription/deepgramClient.ts` by
+  rounding to the nearest integer millisecond. 47/47 unit tests still
+  pass. Documented in `CLAUDE.md`'s "Timestamp normalization" section.
+- **Confirmed working end-to-end structurally**: with the bot genuinely
+  connected to the real `falcon-meet` room (verified via
+  `RoomServiceClient.listParticipants()`) alongside a real human
+  participant, `meeting_lifecycle: started` and both interim and final
+  transcript events landed in the Redis Stream with correct shape,
+  sequencing, and the real participant's identity as `participantId`.
+- **Open question, investigation paused here**: every final transcript
+  event observed had empty `text` and `confidence: 0` — Deepgram never
+  actually recognized any words despite the participant speaking
+  multiple times. Not yet determined whether this is a real pipeline bug
+  (e.g. something in the LiveKit→Deepgram audio path) or simply a
+  silent/muted microphone in the browser tab used for testing — needs a
+  quick amplitude check on the raw `AudioFrame` samples in
+  `realLiveKitRoom.ts` (log the peak `Int16Array` value per frame) the
+  next time this is picked up, before doing a full two-person test.
+- Local infra note: Postgres and Redis are Scoop-installed on this
+  Windows machine but are **not** registered as Windows services — they
+  don't start automatically and must be started manually each session:
+  `pg_ctl -D <scoop>/persist/postgresql/data start` and `redis-server
+  <scoop>/apps/redis/current/redis.conf` (run from that directory to
+  avoid a Git-Bash path-translation issue with the config path argument).
+- Remaining once the above is resolved: a real two-person test (not just
+  one participant + the bot), to fully close out Task 11.
 
 ## What's next for the full Falcon vision
 
