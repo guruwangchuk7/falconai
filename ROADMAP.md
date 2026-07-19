@@ -106,20 +106,32 @@ Second meeting-source, built as an alternative to Zoom RTMS (blocked on billing,
   visible in production logs rather than silent. 55/55 automated tests still pass.
   Verified live: re-ran the direct-connect spike after the fix and got clean,
   accurate final transcripts with no corruption.
-- **Separate, still-open issue found along the way: LiveKit Cloud's real
-  `room_started` webhook never actually reached this server**, across three separate
-  genuine room-creation attempts (confirmed via a request-level logger showing zero
-  `POST /livekit-webhook` hits), even though the dashboard's manual "Send test"
-  button *does* deliver successfully to the same URL, and the configured webhook URL
-  was confirmed correct. This looks like a LiveKit Cloud platform-side issue (a
-  free-tier limitation on automatic webhook dispatch, or a bug), not anything wrong
-  in this codebase — `realLiveKitWebhookSource.ts`/`livekitIndex.ts` were not
-  touched. Worked around for this session's verification via the direct-connect
-  spike script (bypasses `LiveKitBotAdapter`'s webhook-driven join entirely). Real
-  production use still depends on this webhook actually working — needs
-  following up with LiveKit support/docs, or re-testing after some time, before
-  Task 11's full two-person test (which needs the real webhook-driven bot join, not
-  the bypass spike) can be attempted again.
+- **Webhook-delivery issue (above) resolved itself (2026-07-20)**: after the earlier
+  session found zero `POST /livekit-webhook` deliveries across three genuine
+  room-creation attempts despite a correctly-configured URL, a later re-test (same
+  URL, same everything) started receiving real deliveries from LiveKit Cloud
+  (`Go-http-client/2.0`) reliably — multiple `room_started`/`participant_joined`
+  events landed correctly, signature verification succeeded, and the real
+  `falcon-bot` identity joined `falcon-meet` via the actual production webhook path
+  for the first time. Most likely explanation: a delayed config propagation on
+  LiveKit Cloud's side that had simply not finished earlier. No code change was
+  needed or made to `realLiveKitWebhookSource.ts`/`livekitIndex.ts`. Given it
+  resolved without any action here, if it recurs, waiting and retrying is the
+  first thing to try before assuming a code regression.
+- **First successful real end-to-end run via the actual production path** (2026-07-20,
+  same session as the audio-interleaving fix above): with the webhook now
+  delivering, `npm run dev:livekit` ran unmodified — real webhook → `LiveKitBotAdapter`
+  → `TranscriptionManager` → real Deepgram → real Postgres/Redis, no bypass script
+  involved. Confirmed via direct queries against both stores: Postgres
+  `transcript_events` for `falcon-meet` contains accurate final transcripts
+  correctly attributed to the real participant identity (e.g. `"Hello. Hello. My
+  name is"` at confidence 0.996, matching the phrase actually spoken), and the
+  Redis Stream (`meeting:falcon-meet:transcript`) carries correctly-interleaved
+  interim/final transcript entries plus lifecycle events in the documented wire
+  format, with monotonically increasing `sequenceNumber`. The audio-interleaving
+  fix above also proved itself live in this same run — a genuine mid-session
+  re-subscription triggered the guard's `console.warn` and was handled cleanly
+  instead of corrupting the transcript.
 - Local infra note: Postgres and Redis are Scoop-installed on this
   Windows machine but are **not** registered as Windows services — they
   don't start automatically and must be started manually each session:
@@ -128,9 +140,8 @@ Second meeting-source, built as an alternative to Zoom RTMS (blocked on billing,
   avoid a Git-Bash path-translation issue with the config path argument).
   `cloudflared` (installed via `scoop install cloudflared`) is a working
   alternative to ngrok for the local webhook tunnel.
-- Remaining: get the real webhook delivering (see above), then a real
-  two-person test (not just one participant + the bot), to fully close
-  out Task 11.
+- Remaining: a real two-person test (not just one participant + the bot,
+  which is now confirmed working end-to-end), to fully close out Task 11.
 
 ## What's next for the full Falcon vision
 
