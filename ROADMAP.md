@@ -83,23 +83,54 @@ Second meeting-source, built as an alternative to Zoom RTMS (blocked on billing,
   participant, `meeting_lifecycle: started` and both interim and final
   transcript events landed in the Redis Stream with correct shape,
   sequencing, and the real participant's identity as `participantId`.
-- **Open question, investigation paused here**: every final transcript
-  event observed had empty `text` and `confidence: 0` — Deepgram never
-  actually recognized any words despite the participant speaking
-  multiple times. Not yet determined whether this is a real pipeline bug
-  (e.g. something in the LiveKit→Deepgram audio path) or simply a
-  silent/muted microphone in the browser tab used for testing — needs a
-  quick amplitude check on the raw `AudioFrame` samples in
-  `realLiveKitRoom.ts` (log the peak `Int16Array` value per frame) the
-  next time this is picked up, before doing a full two-person test.
+- **Resolved (2026-07-20): the empty-transcript/confidence-0 bug, root cause found and fixed.**
+  Picked back up with the amplitude check this doc called for: added temporary
+  per-frame peak-amplitude logging to `realLiveKitRoom.ts` and raw-response logging
+  to `deepgramClient.ts`, plus a standalone spike (`scripts/livekit-manual-bot-test.ts`)
+  that connects a bot directly to the room, bypassing the webhook entirely (see the
+  webhook-delivery note below). This proved real, non-silent audio was reaching
+  Deepgram throughout — ruling out the muted-mic theory — and that Deepgram
+  transcribed the first ~3.75 minutes of English speech correctly (e.g. "Hello. Can
+  you hear me?" at confidence 0.976) before permanently degrading to empty/
+  confidence-0 for every result afterward, regardless of continued healthy audio
+  amplitude. Cross-referencing the frame counters in the diagnostic log found the
+  actual cause: a **second `RoomEvent.TrackSubscribed` fired for the same
+  participant mid-session** (a normal WebRTC renegotiation/track-republish, not an
+  error), and the old code started an unguarded second `AudioStream` loop each time
+  this happened — both loops then pushed frames into the same callback array
+  concurrently, interleaving two independent audio streams into one corrupted byte
+  sequence handed to the single Deepgram session, which correctly declined to
+  transcribe garbage. **Fixed** in `src/livekit/realLiveKitRoom.ts`: track the active
+  `AudioStream` per participant identity and `.cancel()` the previous one before
+  starting a new one on re-subscription, with a `console.warn` so a recurrence is
+  visible in production logs rather than silent. 55/55 automated tests still pass.
+  Verified live: re-ran the direct-connect spike after the fix and got clean,
+  accurate final transcripts with no corruption.
+- **Separate, still-open issue found along the way: LiveKit Cloud's real
+  `room_started` webhook never actually reached this server**, across three separate
+  genuine room-creation attempts (confirmed via a request-level logger showing zero
+  `POST /livekit-webhook` hits), even though the dashboard's manual "Send test"
+  button *does* deliver successfully to the same URL, and the configured webhook URL
+  was confirmed correct. This looks like a LiveKit Cloud platform-side issue (a
+  free-tier limitation on automatic webhook dispatch, or a bug), not anything wrong
+  in this codebase — `realLiveKitWebhookSource.ts`/`livekitIndex.ts` were not
+  touched. Worked around for this session's verification via the direct-connect
+  spike script (bypasses `LiveKitBotAdapter`'s webhook-driven join entirely). Real
+  production use still depends on this webhook actually working — needs
+  following up with LiveKit support/docs, or re-testing after some time, before
+  Task 11's full two-person test (which needs the real webhook-driven bot join, not
+  the bypass spike) can be attempted again.
 - Local infra note: Postgres and Redis are Scoop-installed on this
   Windows machine but are **not** registered as Windows services — they
   don't start automatically and must be started manually each session:
   `pg_ctl -D <scoop>/persist/postgresql/data start` and `redis-server
   <scoop>/apps/redis/current/redis.conf` (run from that directory to
   avoid a Git-Bash path-translation issue with the config path argument).
-- Remaining once the above is resolved: a real two-person test (not just
-  one participant + the bot), to fully close out Task 11.
+  `cloudflared` (installed via `scoop install cloudflared`) is a working
+  alternative to ngrok for the local webhook tunnel.
+- Remaining: get the real webhook delivering (see above), then a real
+  two-person test (not just one participant + the bot), to fully close
+  out Task 11.
 
 ## What's next for the full Falcon vision
 
