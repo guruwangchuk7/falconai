@@ -120,4 +120,37 @@ describe("KnowledgeGraphWorker", () => {
     expect(deps.buildStore.markFailed).toHaveBeenCalledWith("m1", "db down");
     expect(deps.buildStore.markCompleted).not.toHaveBeenCalled();
   });
+
+  it("processes candidates strictly sequentially, not concurrently, even when one is slower than the next", async () => {
+    const callOrder: string[] = [];
+    const deps = makeDeps({
+      buildStore: {
+        findMeetingsNeedingBuild: vi.fn().mockResolvedValue(["m1", "m2"]),
+        markProcessing: vi.fn().mockImplementation(async (id: string) => {
+          callOrder.push(`markProcessing:${id}`);
+        }),
+        markCompleted: vi.fn().mockImplementation(async (id: string) => {
+          callOrder.push(`markCompleted:${id}`);
+        }),
+        markFailed: vi.fn().mockResolvedValue(undefined),
+      },
+      fetcher: {
+        fetchFormattedTranscript: vi.fn().mockImplementation(async (id: string) => {
+          callOrder.push(`fetch:${id}`);
+          if (id === "m1") {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          return { promptText: "", participants: [] };
+        }),
+      },
+    });
+    const worker = new KnowledgeGraphWorker(deps as any);
+
+    await worker.pollOnce();
+
+    expect(callOrder).toEqual([
+      "markProcessing:m1", "fetch:m1", "markCompleted:m1",
+      "markProcessing:m2", "fetch:m2", "markCompleted:m2",
+    ]);
+  });
 });
