@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { migrate } from "../../src/db/migrate";
 import { getPool, closePool } from "../../src/db/pool";
 import { TranscriptFetcher } from "../../src/knowledgeGraph/transcriptFetcher";
@@ -41,12 +41,40 @@ describe("TranscriptFetcher", () => {
       { participantId: "p1", speakerName: "Alex" },
       { participantId: "p2", speakerName: "Sam" },
     ]);
+  });
 
-    const { rows: rawRows } = await pool.query(
-      `SELECT start_ts::int AS "startTs" FROM transcript_events WHERE meeting_id = $1 ORDER BY sequence_number LIMIT 1`,
+  it("returns startTs as a genuine number, not a string, from Postgres's BIGINT column", async () => {
+    const pool = getPool();
+    const meetingId = "transcript-fetcher-test-1"; // reuse the same seeded meeting as the first test
+    await pool.query(
+      `INSERT INTO meetings (meeting_id, started_at, status) VALUES ($1, now(), 'ended')
+       ON CONFLICT (meeting_id) DO NOTHING`,
       [meetingId]
     );
-    expect(typeof rawRows[0].startTs).toBe("number");
+    await pool.query(`DELETE FROM transcript_events WHERE meeting_id = $1`, [meetingId]);
+    await pool.query(
+      `INSERT INTO transcript_events
+        (meeting_id, utterance_id, participant_id, speaker_name, text, start_ts, end_ts, confidence, source, sequence_number)
+       VALUES
+        ($1, 'u2', 'p2', 'Sam', 'Agreed.', 500, 700, 0.9, 'deepgram', 2),
+        ($1, 'u1', 'p1', 'Alex', 'Let''s use Postgres.', 0, 400, 0.95, 'deepgram', 1)`,
+      [meetingId]
+    );
+
+    const querySpy = vi.spyOn(pool, "query");
+
+    const fetcher = new TranscriptFetcher();
+    await fetcher.fetchFormattedTranscript(meetingId);
+
+    const transcriptQueryCall = querySpy.mock.calls.find(
+      ([sql]) => typeof sql === "string" && sql.includes("FROM transcript_events")
+    );
+    expect(transcriptQueryCall).toBeDefined();
+    const callIndex = querySpy.mock.calls.indexOf(transcriptQueryCall!);
+    const { rows } = await querySpy.mock.results[callIndex].value;
+    expect(typeof rows[0].startTs).toBe("number");
+
+    querySpy.mockRestore();
   });
 
   it("returns empty output for a meeting with no transcript events", async () => {
