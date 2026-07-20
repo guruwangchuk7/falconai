@@ -41,6 +41,12 @@ describe("TranscriptFetcher", () => {
       { participantId: "p1", speakerName: "Alex" },
       { participantId: "p2", speakerName: "Sam" },
     ]);
+
+    const { rows: rawRows } = await pool.query(
+      `SELECT start_ts::int AS "startTs" FROM transcript_events WHERE meeting_id = $1 ORDER BY sequence_number LIMIT 1`,
+      [meetingId]
+    );
+    expect(typeof rawRows[0].startTs).toBe("number");
   });
 
   it("returns empty output for a meeting with no transcript events", async () => {
