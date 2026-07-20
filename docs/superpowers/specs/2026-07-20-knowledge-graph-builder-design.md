@@ -126,16 +126,19 @@ the Claude API, never a meeting-source SDK or Redis.
 
 ### Components
 
-**`KnowledgeGraphWorker`** — on a fixed interval (e.g. every 5–10 seconds),
-queries `meetings` for rows with `status IN ('ended', 'ended_error')` that
-have no `completed` row in `graph_builds` for the same `meetingId`. For each
-one found, writes/updates a `graph_builds` row to `processing`, drives the
-build through `TranscriptFetcher` → `DecisionExtractor` → `GraphWriter`, and
-updates `graph_builds` to `completed`/`failed`. Because every poll tick
+**`KnowledgeGraphWorker`** — runs a single continuous loop: on each tick,
+query `meetings` for rows with `status IN ('ended', 'ended_error')` that have
+no `graph_builds` row, or whose `graph_builds.status = 'processing'` (a
+crash-recovery case — see Error handling); `completed` and `failed` rows are
+excluded. For each match, found sequentially within the same tick (never
+concurrently), writes/updates its `graph_builds` row to `processing`, drives
+the build through `TranscriptFetcher` → `DecisionExtractor` → `GraphWriter`,
+and updates `graph_builds` to `completed`/`failed` — then sleeps a fixed
+interval (e.g. 5–10 seconds) before the next tick. Because every tick
 re-queries the same durable `meetings`/`graph_builds` state (not an ephemeral
 stream position), there is nothing separate to "reconcile" on startup — the
-very first poll after a restart naturally picks up anything left unprocessed,
-including a meeting whose processing was interrupted mid-build (still
+very first tick after a restart naturally picks up anything left
+unprocessed, including a meeting whose build was interrupted mid-way (still
 `processing`, never `completed`).
 
 **`TranscriptFetcher`** — reads all `isFinal: true` rows for a `meetingId`
@@ -207,13 +210,16 @@ traces back to its meeting without joining through a participant).
 
 ## Data flow
 
-1. On each poll tick, `KnowledgeGraphWorker` queries `meetings` for rows with
-   `status IN ('ended', 'ended_error')` that have no `completed` row in
-   `graph_builds` for the same `meetingId`.
-2. For each matching meeting, upserts a `graph_builds` row to `processing`
-   (idempotent — a meeting already `processing` or `completed` is simply
-   skipped this tick, so a slow build spanning multiple poll intervals is
-   never double-started).
+1. On each poll tick, `KnowledgeGraphWorker` queries for meetings needing a
+   build: `meetings.status IN ('ended', 'ended_error')` AND (no
+   `graph_builds` row exists for that `meetingId`, OR its `graph_builds.status
+   = 'processing'`) — i.e. every ended meeting except ones already
+   `completed` or `failed`. Including `processing` rows in the candidate set
+   is what makes a crash mid-build recoverable: that meeting's row is stuck
+   at `processing` forever otherwise.
+2. For each matching meeting (processed one at a time, fully awaited before
+   moving to the next — see Error handling for why this ordering matters),
+   upserts its `graph_builds` row to `processing`.
 3. `TranscriptFetcher` pulls all final `transcript_events` for the meeting
    from Postgres, ordered by `sequenceNumber`, formatted for the prompt. The
    participant roster is derived from the distinct `(participantId,
@@ -233,8 +239,8 @@ traces back to its meeting without joining through a participant).
    itself is a poll against durable Postgres state rather than a stream
    position, the worker's very first poll tick after any restart re-derives
    the correct set of meetings needing a build — including one left
-   `processing` by a crash mid-build (see Error handling for why re-running
-   it is safe).
+   `processing` by a crash mid-build (step 1's candidate query picks it up
+   directly).
 
 ## Error handling
 
@@ -244,23 +250,28 @@ traces back to its meeting without joining through a participant).
   worker crash at any point just means the next tick (on this instance or a
   restarted one) re-queries the same durable state and picks up where things
   left off.
+- **Single sequential poll loop, no in-process concurrency**: the worker is
+  one continuously-running loop — `await` a full poll tick (every candidate
+  meeting fully processed) before sleeping and polling again — rather than a
+  raw fixed-rate timer that could fire again while a previous tick is still
+  running. This is what makes including `processing` rows in the candidate
+  set (step 1) safe: a meeting genuinely still being built by *this same*
+  process is never revisited mid-build, since the next tick doesn't start
+  until the current one finishes. Only a restart (a fresh process with no
+  memory of what it was doing) can leave a row at `processing` for the next
+  tick to legitimately retry.
 - **Claude API failures** (rate limit, 5xx, malformed or refused structured
   output): rely on the SDK's default retry-with-backoff for transient
   failures; on exhausted retries, mark `graph_builds.status = 'failed'` with
   the error message and move on to the next meeting. A failed build never
   blocks the worker from processing other meetings, and is not
-  automatically retried on subsequent ticks (a `failed` row, like a
-  `completed` one, is excluded from the next poll's candidate set) — left
-  for manual reprocessing.
+  automatically retried on subsequent ticks (a `failed` row is excluded from
+  the candidate query, same as `completed`) — left for manual reprocessing.
 - **Postgres write failures** (writing the graph): retry with backoff, then
   `failed` — same as above. Unlike sub-project 1's pipeline, there is no
   live delivery to prioritize here, so there is no asymmetric
   retry-and-continue; a failed graph build is simply marked failed and left
   for manual reprocessing (query `graph_builds where status = 'failed'`).
-- **Idempotency across ticks**: a meeting already `processing` (still being
-  worked by this or a concurrent tick) or `completed` is excluded from the
-  next poll's candidate set, so overlapping ticks or a slow build spanning
-  multiple poll intervals never triggers a duplicate build.
 
 ## Testing
 
