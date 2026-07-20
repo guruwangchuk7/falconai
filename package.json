@@ -11,6 +11,7 @@
     "test": "vitest run",
     "dev": "tsx src/server/index.ts",
     "dev:livekit": "tsx src/server/livekitIndex.ts",
+    "dev:kg": "tsx src/server/knowledgeGraphIndex.ts",
     "migrate": "tsx src/db/runMigrate.ts",
     "spike:rtms": "tsx scripts/rtms-capability-check.ts",
     "verify:live-audio": "tsx scripts/live-audio-verification.ts",
