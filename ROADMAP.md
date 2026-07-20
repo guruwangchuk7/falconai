@@ -32,7 +32,7 @@ Sub-project 1 (meeting ingestion & transcription) is fully built, reviewed, and 
 
 **Once a webhook does arrive**, next debugging steps if something's still wrong: check `docs/superpowers/notes/zoom-rtms-capability-findings.md` for the specific real-vs-assumed API details already discovered (webhook payload shape, `userId` type, event name spelling), and update `src/zoom/realWebhookSource.ts` / `realRtmsClient.ts` if reality differs from what's coded.
 
-## In progress: LiveKit-based meeting ingestion ("Falcon Meet") — Tasks 1-10 complete, Task 11 pending
+## Done: LiveKit-based meeting ingestion ("Falcon Meet") — all 11 tasks complete
 
 Second meeting-source, built as an alternative to Zoom RTMS (blocked on billing, above): `LiveKitBotAdapter` is a drop-in sibling of `ZoomBotAdapter` (same five-event surface via a shared `MeetingSourceAdapter` interface), feeding the same unmodified `TranscriptionManager`/`TranscriptPipeline`/Postgres/Redis pipeline. See `docs/superpowers/specs/2026-07-16-livekit-meeting-ingestion-design.md` and `docs/superpowers/plans/2026-07-16-livekit-meeting-ingestion.md` (11-task plan).
 
@@ -140,8 +140,26 @@ Second meeting-source, built as an alternative to Zoom RTMS (blocked on billing,
   avoid a Git-Bash path-translation issue with the config path argument).
   `cloudflared` (installed via `scoop install cloudflared`) is a working
   alternative to ngrok for the local webhook tunnel.
-- Remaining: a real two-person test (not just one participant + the bot,
-  which is now confirmed working end-to-end), to fully close out Task 11.
+- **Task 11 fully closed (2026-07-20): real two-person test passed.** Both
+  real human participants (`Guru Wangchuk`, `KodaDev`) joined the same real
+  `falcon-meet` room via the browser join page and spoke concurrently.
+  LiveKit Cloud's webhook delivery went silent again in this session
+  (same non-deterministic gap as before, no config change needed) — worked
+  around by manually constructing and POSTing a correctly-signed
+  `room_started` event straight to the already-running server's
+  `/livekit-webhook` endpoint (same signature scheme LiveKit itself uses via
+  `livekit-server-sdk`'s `AccessToken`/`WebhookReceiver`), rather than
+  routing around any of Falcon's own code. Everything downstream — real
+  `LiveKitBotAdapter`, real `room.connect()`, real per-participant
+  `TranscriptionManager` sessions, real Deepgram, real Postgres/Redis — ran
+  unmodified. Result: 85 final transcript rows persisted, correctly
+  attributed per real participant identity with no cross-speaker audio
+  corruption (e.g. `Guru Wangchuk`: "I need it twice." at confidence 0.79;
+  `KodaDev` also transcribed distinctly) — confirming the `TrackSubscribed`
+  audio-interleaving fix from earlier this session holds with two
+  simultaneous real speakers, not just one. See `CLAUDE.md`'s "Local
+  webhook-testing gotchas" section for the reusable manual-trigger recipe.
+  **This closes the 11-task LiveKit Meeting Ingestion Implementation Plan.**
 
 ## What's next for the full Falcon vision
 
