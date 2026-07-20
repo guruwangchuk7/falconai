@@ -83,11 +83,13 @@ sub-project (e.g. an in-meeting agent) needs it.
 ## Architecture
 
 ```
-Redis Stream (meeting:{meetingId}:transcript)
-        │  (existing, unmodified — sub-project 1's public contract)
+Postgres `meetings` table (existing, unmodified — status set to
+'ended'/'ended_error' by PostgresTranscriptStore.closeMeeting, the same
+codepath that publishes the lifecycle event to Redis in sub-project 1)
+        │  (KnowledgeGraphWorker polls this on an interval)
         ▼
-KnowledgeGraphWorker  ──consumer group──►  watches for meeting_lifecycle: ended/ended_error
-        │
+KnowledgeGraphWorker  ── finds meetings.status IN ('ended','ended_error')
+        │                lacking a completed graph_builds row
         ▼
 TranscriptFetcher  ── reads final transcript_events for meetingId from Postgres, ordered by sequenceNumber
         │
@@ -104,24 +106,37 @@ graph_nodes / graph_edges tables  ◄── queryable via SQL (this sub-project'
                                        no query API is built in this sub-project)
 ```
 
+This sub-project does not consume the Redis Stream at all. An earlier version
+of this design proposed a Redis Streams consumer group on
+`meeting:{meetingId}:transcript` for the trigger, but that has no clean
+solution: each meeting gets its own stream key, and Redis Streams have no
+wildcard/pattern subscription — a consumer group must be created against a
+specific key you already know about, so a generic worker has no way to
+"subscribe to all future meetings' streams" without first learning each
+meeting's ID from somewhere else. The `meetings` table already durably
+records the same lifecycle transition (`status` becomes `'ended'` or
+`'ended_error'`, set by the exact same `PostgresTranscriptStore.closeMeeting`
+call that publishes the Redis lifecycle event), so polling it directly is
+both simpler and avoids the discovery problem entirely.
+
 New composition root, sibling to `src/server/index.ts` / `livekitIndex.ts`:
 `src/server/knowledgeGraphIndex.ts`, a standalone long-running worker process
-— not part of the Zoom/LiveKit HTTP servers, since it only needs Redis,
-Postgres, and the Claude API, never a meeting-source SDK.
+— not part of the Zoom/LiveKit HTTP servers, since it only needs Postgres and
+the Claude API, never a meeting-source SDK or Redis.
 
 ### Components
 
-**`KnowledgeGraphWorker`** — consumes `meeting:{meetingId}:transcript` via a
-Redis Streams consumer group (durable, at-least-once delivery, matching
-sub-project 1's own delivery-guarantee model). On seeing
-`meeting_lifecycle: ended`/`ended_error`, immediately writes a `pending` row
-to `graph_builds` for that `meetingId` (before any processing, so even an
-immediate crash leaves a durable trace), then checks whether a `completed`
-row already exists; if not, drives the build through `TranscriptFetcher` →
-`DecisionExtractor` → `GraphWriter` and updates `graph_builds` to
-`completed`/`failed`. On startup, before consuming live traffic, it also
-reconciles: queries `graph_builds` for any `pending`/`processing` rows left
-over from a prior crash and re-runs them (idempotent — see Error handling).
+**`KnowledgeGraphWorker`** — on a fixed interval (e.g. every 5–10 seconds),
+queries `meetings` for rows with `status IN ('ended', 'ended_error')` that
+have no `completed` row in `graph_builds` for the same `meetingId`. For each
+one found, writes/updates a `graph_builds` row to `processing`, drives the
+build through `TranscriptFetcher` → `DecisionExtractor` → `GraphWriter`, and
+updates `graph_builds` to `completed`/`failed`. Because every poll tick
+re-queries the same durable `meetings`/`graph_builds` state (not an ephemeral
+stream position), there is nothing separate to "reconcile" on startup — the
+very first poll after a restart naturally picks up anything left unprocessed,
+including a meeting whose processing was interrupted mid-build (still
+`processing`, never `completed`).
 
 **`TranscriptFetcher`** — reads all `isFinal: true` rows for a `meetingId`
 from `transcript_events` (Postgres), ordered by `sequenceNumber`, and
@@ -147,11 +162,10 @@ connecting them. Commits atomically — a partial extraction never leaves a
 half-written graph.
 
 **`graph_builds`** table — tracks per-meeting build status
-(`pending`/`processing`/`completed`/`failed`) for idempotency (an
-at-least-once-redelivered lifecycle event short-circuits once completed) and
-startup reconciliation (catches a meeting whose `ended` event arrived while
-the worker was down, after the Redis Stream entry has aged out of the
-consumer group's replay window).
+(`processing`/`completed`/`failed`), the sole idempotency boundary:
+a meeting already `processing` or `completed` is excluded from the next poll
+tick's candidate set, so repeated ticks (including the first tick after any
+restart) never trigger a duplicate build.
 
 ## Schema
 
@@ -181,7 +195,7 @@ created_at    timestamptz not null default now()
 
 -- graph_builds: per-meeting idempotency + reconciliation tracking
 meeting_id    text primary key
-status        text not null  -- 'pending' | 'processing' | 'completed' | 'failed'
+status        text not null  -- 'processing' | 'completed' | 'failed'
 error         text
 started_at    timestamptz
 completed_at  timestamptz
@@ -193,12 +207,13 @@ traces back to its meeting without joining through a participant).
 
 ## Data flow
 
-1. `KnowledgeGraphWorker` reads `meeting_lifecycle: ended`/`ended_error` off
-   the Redis Stream via its consumer group.
-2. Writes a `graph_builds` row (`pending`), then checks for an existing
-   `completed` row for this `meetingId`; if found, acknowledges and skips
-   (idempotent redelivery). Otherwise proceeds and marks the row
-   `processing`.
+1. On each poll tick, `KnowledgeGraphWorker` queries `meetings` for rows with
+   `status IN ('ended', 'ended_error')` that have no `completed` row in
+   `graph_builds` for the same `meetingId`.
+2. For each matching meeting, upserts a `graph_builds` row to `processing`
+   (idempotent — a meeting already `processing` or `completed` is simply
+   skipped this tick, so a slow build spanning multiple poll intervals is
+   never double-started).
 3. `TranscriptFetcher` pulls all final `transcript_events` for the meeting
    from Postgres, ordered by `sequenceNumber`, formatted for the prompt. The
    participant roster is derived from the distinct `(participantId,
@@ -214,39 +229,38 @@ traces back to its meeting without joining through a participant).
    upsert `Topic` nodes, insert all edges. Commit.
 6. `graph_builds` row set to `completed` (or `failed` with the error
    message — see Error handling).
-7. On worker startup, before consuming live traffic: query `graph_builds`
-   for any `pending`/`processing` rows and re-run steps 3–6 for each,
-   catching a meeting whose `ended` event was never durably actioned (e.g.
-   the worker crashed between steps 1 and 2, or the stream entry was
-   trimmed before this worker instance ever ran).
+7. There is no separate startup reconciliation step: because the trigger
+   itself is a poll against durable Postgres state rather than a stream
+   position, the worker's very first poll tick after any restart re-derives
+   the correct set of meetings needing a build — including one left
+   `processing` by a crash mid-build (see Error handling for why re-running
+   it is safe).
 
 ## Error handling
 
-- **Redis consumer group**: standard `XREADGROUP` + `XACK`. A crash
-  mid-processing leaves the message unacknowledged, so it is redelivered to
-  the next consumer instance on restart; combined with the `graph_builds`
-  idempotency check, reprocessing is safe (a `completed` build short-circuits
-  immediately without re-calling Claude or rewriting the graph).
+- **Poll-based trigger, no separate delivery mechanism to fail**: since the
+  trigger is a plain Postgres query re-run on every tick, there is no
+  message queue, consumer group, or acknowledgment to reason about — a
+  worker crash at any point just means the next tick (on this instance or a
+  restarted one) re-queries the same durable state and picks up where things
+  left off.
 - **Claude API failures** (rate limit, 5xx, malformed or refused structured
   output): rely on the SDK's default retry-with-backoff for transient
   failures; on exhausted retries, mark `graph_builds.status = 'failed'` with
   the error message and move on to the next meeting. A failed build never
-  blocks the worker from processing other meetings.
+  blocks the worker from processing other meetings, and is not
+  automatically retried on subsequent ticks (a `failed` row, like a
+  `completed` one, is excluded from the next poll's candidate set) — left
+  for manual reprocessing.
 - **Postgres write failures** (writing the graph): retry with backoff, then
-  `failed` — same as above. Unlike sub-project 1's pipeline, there is no live
-  delivery to prioritize here, so there is no asymmetric retry-and-continue;
-  a failed graph build is simply marked failed and left for manual
-  reprocessing (query `graph_builds where status = 'failed'`).
-- **Durable "meeting ended" record**: since lifecycle events aren't
-  persisted anywhere in sub-project 1 (only `transcript_events` rows are),
-  the `graph_builds` row written immediately upon seeing `ended` (step 2,
-  before processing) is what makes the meeting's "ended" state durable
-  enough for startup reconciliation to find — no separate lifecycle table is
-  needed.
-- **Delivery guarantees**: consistent with sub-project 1's own contract,
-  this worker treats Redis Stream events as at-least-once delivered; the
-  `graph_builds` completed-check is the idempotency boundary that makes
-  duplicate lifecycle deliveries safe.
+  `failed` — same as above. Unlike sub-project 1's pipeline, there is no
+  live delivery to prioritize here, so there is no asymmetric
+  retry-and-continue; a failed graph build is simply marked failed and left
+  for manual reprocessing (query `graph_builds where status = 'failed'`).
+- **Idempotency across ticks**: a meeting already `processing` (still being
+  worked by this or a concurrent tick) or `completed` is excluded from the
+  next poll's candidate set, so overlapping ticks or a slow build spanning
+  multiple poll intervals never triggers a duplicate build.
 
 ## Testing
 
