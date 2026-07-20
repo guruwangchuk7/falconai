@@ -48,9 +48,19 @@ CREATE TABLE IF NOT EXISTS graph_edges (
 );
 
 CREATE TABLE IF NOT EXISTS graph_builds (
-  meeting_id TEXT PRIMARY KEY REFERENCES meetings(meeting_id),
+  meeting_id TEXT PRIMARY KEY REFERENCES meetings(meeting_id) ON DELETE CASCADE,
   status TEXT NOT NULL,
   error TEXT,
   started_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ
 );
+
+-- CREATE TABLE IF NOT EXISTS above only applies ON DELETE CASCADE to a freshly
+-- created table; re-run migrate() against a database where graph_builds already
+-- exists (e.g. this dev machine) leaves the original no-cascade FK in place, so
+-- deleting a meetings row that already has a graph_builds row throws a foreign
+-- key violation instead of cascading. Make the cascade idempotent to add too.
+ALTER TABLE graph_builds DROP CONSTRAINT IF EXISTS graph_builds_meeting_id_fkey;
+ALTER TABLE graph_builds
+  ADD CONSTRAINT graph_builds_meeting_id_fkey
+  FOREIGN KEY (meeting_id) REFERENCES meetings(meeting_id) ON DELETE CASCADE;
