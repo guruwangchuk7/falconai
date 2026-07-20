@@ -52,13 +52,26 @@ export function createRealAnthropicExtractionClient(apiKey: string): AnthropicEx
         messages: [{ role: "user", content: buildExtractionPrompt(transcriptText) }],
       });
 
+      if (response.stop_reason !== "end_turn") {
+        throw new Error(
+          `Claude decision extraction did not complete normally (stop_reason: ${response.stop_reason})`
+        );
+      }
+
       const textBlock = response.content.find(
         (block): block is Anthropic.TextBlock => block.type === "text"
       );
       if (!textBlock) {
         throw new Error("Claude response for decision extraction contained no text block");
       }
-      return JSON.parse(textBlock.text) as ExtractionResult;
+      try {
+        return JSON.parse(textBlock.text) as ExtractionResult;
+      } catch (err) {
+        throw new Error(
+          `Failed to parse Claude's extraction result as JSON: ${textBlock.text.slice(0, 200)}`,
+          { cause: err }
+        );
+      }
     },
   };
 }
