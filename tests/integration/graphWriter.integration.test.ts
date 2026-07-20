@@ -78,8 +78,18 @@ describe("GraphWriter", () => {
     expect(await countNodesByType(meetingId, "decision")).toBe(1);
 
     const pool = getPool();
+    // Scoped to this test's own meeting node via its MADE_IN edge rather than a bare
+    // `WHERE label = ...` match -- GraphBuildStore.findMeetingsNeedingBuild() has no
+    // scoping, so any KnowledgeGraphWorker.pollOnce() running concurrently in another
+    // test file sweeps up this meeting (it's 'ended' with no graph_builds row yet) and
+    // writes its own canned decision text into it too. See the same fix already applied
+    // in knowledgeGraphPipeline.integration.test.ts.
     const { rows: decisionRows } = await pool.query(
-      `SELECT id, label FROM graph_nodes WHERE type = 'decision' AND label = 'Use Postgres for the graph store.'`
+      `SELECT gn.id, gn.label FROM graph_nodes gn
+       JOIN graph_edges ge ON ge.from_node_id = gn.id AND ge.type = 'MADE_IN'
+       JOIN graph_nodes m ON m.id = ge.to_node_id AND m.type = 'meeting' AND m.natural_key = $1
+       WHERE gn.type = 'decision' AND gn.label = 'Use Postgres for the graph store.'`,
+      [meetingId]
     );
     expect(decisionRows).toHaveLength(1);
 

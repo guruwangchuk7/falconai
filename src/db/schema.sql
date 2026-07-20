@@ -60,7 +60,20 @@ CREATE TABLE IF NOT EXISTS graph_builds (
 -- exists (e.g. this dev machine) leaves the original no-cascade FK in place, so
 -- deleting a meetings row that already has a graph_builds row throws a foreign
 -- key violation instead of cascading. Make the cascade idempotent to add too.
-ALTER TABLE graph_builds DROP CONSTRAINT IF EXISTS graph_builds_meeting_id_fkey;
-ALTER TABLE graph_builds
-  ADD CONSTRAINT graph_builds_meeting_id_fkey
-  FOREIGN KEY (meeting_id) REFERENCES meetings(meeting_id) ON DELETE CASCADE;
+-- Guarded so the ALTER (which needs an ACCESS EXCLUSIVE lock) only runs once ever
+-- per database, not on every migrate() call -- every integration test file calls
+-- migrate() in its own beforeAll, several running concurrently, and an
+-- unconditional DROP/ADD CONSTRAINT here deadlocked against those concurrent
+-- transactions' own locks on meetings/graph_builds on every single test run.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'graph_builds_meeting_id_fkey' AND confdeltype = 'c'
+  ) THEN
+    ALTER TABLE graph_builds DROP CONSTRAINT IF EXISTS graph_builds_meeting_id_fkey;
+    ALTER TABLE graph_builds
+      ADD CONSTRAINT graph_builds_meeting_id_fkey
+      FOREIGN KEY (meeting_id) REFERENCES meetings(meeting_id) ON DELETE CASCADE;
+  END IF;
+END $$;

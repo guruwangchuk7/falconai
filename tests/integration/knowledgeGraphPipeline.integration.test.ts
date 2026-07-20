@@ -52,7 +52,13 @@ describe("Knowledge Graph Builder end-to-end pipeline", () => {
       onAlert: (msg, err) => console.error(msg, err),
     });
 
-    await worker.pollOnce();
+    // Exercise the scoped processMeeting(), not the unscoped pollOnce() sweep --
+    // GraphBuildStore.findMeetingsNeedingBuild() has no meeting-id filter, so
+    // pollOnce() also processes every other 'ended' meeting already sitting in this
+    // shared dev/test database (including other integration test files' own fixture
+    // meetings running concurrently), which pollutes their graphs with this test's
+    // fake extractor output and makes the call-count assertions below flaky/wrong.
+    await worker.processMeeting(meetingId);
 
     const { rows: buildRows } = await pool.query(
       `SELECT status FROM graph_builds WHERE meeting_id = $1`,
@@ -78,16 +84,12 @@ describe("Knowledge Graph Builder end-to-end pipeline", () => {
     expect(decisionRows).toHaveLength(1);
     expect(fakeExtractor.extract).toHaveBeenCalledTimes(1);
 
-    // A second poll tick must not reprocess a completed meeting.
-    await worker.pollOnce();
-    expect(fakeExtractor.extract).toHaveBeenCalledTimes(1);
-    const { rows: decisionRowsAfterSecondPoll } = await pool.query(
-      `SELECT gn.label FROM graph_nodes gn
-       JOIN graph_edges ge ON ge.from_node_id = gn.id AND ge.type = 'MADE_IN'
-       JOIN graph_nodes m ON m.id = ge.to_node_id AND m.type = 'meeting' AND m.natural_key = $1
-       WHERE gn.type = 'decision' AND gn.label = 'Use Postgres for the graph store.'`,
-      [meetingId]
-    );
-    expect(decisionRowsAfterSecondPoll).toHaveLength(1);
+    // A completed meeting must not be picked up as a candidate on the next poll tick.
+    // Checked via GraphBuildStore directly (same tolerant contains/not-contains style
+    // as graphBuildStore.integration.test.ts) rather than calling the real, unscoped
+    // pollOnce() again -- see the comment above about why that sweeps unrelated
+    // meetings in this shared database.
+    const candidatesAfterCompletion = await new GraphBuildStore().findMeetingsNeedingBuild();
+    expect(candidatesAfterCompletion).not.toContain(meetingId);
   });
 });
