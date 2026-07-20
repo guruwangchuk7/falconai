@@ -23,3 +23,34 @@ CREATE TABLE IF NOT EXISTS transcript_events (
 
 CREATE INDEX IF NOT EXISTS idx_transcript_events_meeting
   ON transcript_events (meeting_id, sequence_number);
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS graph_nodes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type TEXT NOT NULL,
+  natural_key TEXT,
+  label TEXT NOT NULL,
+  attributes JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_graph_nodes_type_natural_key
+  ON graph_nodes (type, natural_key) WHERE natural_key IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS graph_edges (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  from_node_id UUID NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+  to_node_id UUID NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (from_node_id, to_node_id, type)
+);
+
+CREATE TABLE IF NOT EXISTS graph_builds (
+  meeting_id TEXT PRIMARY KEY REFERENCES meetings(meeting_id),
+  status TEXT NOT NULL,
+  error TEXT,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ
+);
