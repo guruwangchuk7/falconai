@@ -1,5 +1,32 @@
 # Falcon Roadmap
 
+## Next steps (for you, picking this back up)
+
+Left off here on 2026-07-21 after a laptop restart interrupted the session. Code is done and committed (see "Done (code): Knowledge Graph Builder" below); everything remaining needs you specifically:
+
+1. **Start Postgres + Redis** (not Windows services — manual every session):
+   - `pg_ctl -D C:\Users\dell2\scoop\persist\postgresql\data start`
+   - from `C:\Users\dell2\scoop\apps\redis\current`: `redis-server redis.conf --daemonize yes`
+2. **Restore `.env`** — it's stale (dated Jul 16) and missing keys that used to be there:
+   - `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL` (project `falcon-ai-vzhdw96i.livekit.cloud`) — re-copy from wherever you originally got them (LiveKit Cloud dashboard → your project → Settings → Keys).
+   - `ANTHROPIC_API_KEY` — new, needed for the Knowledge Graph worker's real Claude calls. Get one from console.anthropic.com if you don't have one handy.
+   - `KG_POLL_INTERVAL_MS=5000` (optional, defaults to 5000 anyway).
+3. **Run the manual/live verification** (the one remaining step of the Knowledge Graph Builder plan):
+   - `npm run dev:livekit` — join via the browser page, have a real conversation with at least one clear decision spoken out loud.
+   - `npm run dev:kg` alongside it, in another terminal.
+   - Let the meeting end, wait `KG_POLL_INTERVAL_MS` (~5s), then query directly:
+     ```sql
+     SELECT gn.label, gn.attributes FROM graph_nodes gn WHERE gn.type = 'decision';
+     SELECT p.label AS person, d.label AS decision FROM graph_edges e
+       JOIN graph_nodes p ON p.id = e.from_node_id AND p.type = 'person'
+       JOIN graph_nodes d ON d.id = e.to_node_id AND d.type = 'decision'
+       WHERE e.type = 'MADE';
+     ```
+   - Confirm the extracted decision(s) and speaker attribution match what was actually said.
+4. **Optional cleanup**: a few real meetings (`falcon-meet`, `Demo Room`, `live-audio-verification-*`) have fake test-generated decision nodes attached from bugs fixed this session — harmless, but delete their `graph_builds` row if you want a real graph build for them later.
+5. Once verified, this closes the Knowledge Graph Builder sub-project — next up per the roadmap is brainstorming the **Dynamic Agent Manager** (see "What's next for the full Falcon vision" below).
+6. You also have 23 local commits not yet pushed to `origin/master` — push whenever you're ready.
+
 ## Verified 2026-07-16: real Deepgram/Postgres/Redis pipeline works end-to-end
 
 Since RTMS itself is blocked by billing (below), verified everything downstream of the Zoom bot-join layer against a real recorded voice clip instead: `scripts/live-audio-verification.ts` (`npm run verify:live-audio -- <audio-file>`) streamed real audio through the real `TranscriptionManager` → real Deepgram → real `TranscriptPipeline` → real Postgres/Redis. Result: correct live transcription ("Hi. My name is Guru Wanchuk.", confidence 0.998) landed in both.
