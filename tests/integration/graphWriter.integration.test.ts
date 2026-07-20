@@ -56,7 +56,16 @@ describe("GraphWriter", () => {
     ];
     const extraction: ExtractionResult = {
       decisions: [
-        { text: "Use Postgres for the graph store.", speakerName: "Alex", confidence: 0.9, topics: ["graph store"] },
+        {
+          text: "Use Postgres for the graph store.",
+          // Deliberately mismatched casing/whitespace vs. the participant roster's
+          // "Alex" -- proves the MADE edge lookup normalizes both sides the same
+          // way the person node's own natural_key is computed, instead of silently
+          // dropping the edge on a raw-string lookup miss.
+          speakerName: " ALEX ",
+          confidence: 0.9,
+          topics: ["graph store"],
+        },
       ],
       topics: [{ label: "graph store" }],
     };

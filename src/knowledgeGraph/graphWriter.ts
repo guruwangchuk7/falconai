@@ -31,7 +31,7 @@ export class GraphWriter {
       for (const participant of participants) {
         const naturalKey = participant.speakerName.trim().toLowerCase();
         const personNodeId = await upsertNode(client, "person", naturalKey, participant.speakerName, {});
-        personNodeIdsBySpeakerName.set(participant.speakerName, personNodeId);
+        personNodeIdsBySpeakerName.set(naturalKey, personNodeId);
         await insertEdgeIfAbsent(client, personNodeId, meetingNodeId, "PARTICIPATED_IN");
       }
 
@@ -53,7 +53,8 @@ export class GraphWriter {
 
         await insertEdgeIfAbsent(client, decisionNodeId, meetingNodeId, "MADE_IN");
 
-        const speakerNodeId = personNodeIdsBySpeakerName.get(decision.speakerName);
+        const speakerNaturalKey = decision.speakerName.trim().toLowerCase();
+        const speakerNodeId = personNodeIdsBySpeakerName.get(speakerNaturalKey);
         if (speakerNodeId) {
           await insertEdgeIfAbsent(client, speakerNodeId, decisionNodeId, "MADE");
         }
