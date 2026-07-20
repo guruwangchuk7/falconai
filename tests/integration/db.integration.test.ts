@@ -29,6 +29,9 @@ describe("database schema", () => {
   it("enforces unique (type, natural_key) on graph_nodes, ignoring rows with a null natural_key", async () => {
     const pool = getPool();
     await pool.query(
+      "DELETE FROM graph_nodes WHERE (type = 'person' AND natural_key = 'alex') OR (type = 'decision' AND label IN ('Decision A', 'Decision B'))"
+    );
+    await pool.query(
       `INSERT INTO graph_nodes (type, natural_key, label) VALUES ('person', 'alex', 'Alex')`
     );
     await expect(
@@ -43,6 +46,9 @@ describe("database schema", () => {
 
   it("cascades edge deletes when a node is deleted, and rejects duplicate edges", async () => {
     const pool = getPool();
+    await pool.query(
+      "DELETE FROM graph_nodes WHERE natural_key IN ('cascade-test-person', 'cascade-test-meeting')"
+    );
     const { rows: nodeRows } = await pool.query(
       `INSERT INTO graph_nodes (type, natural_key, label) VALUES ('person', 'cascade-test-person', 'Cascade Test'), ('meeting', 'cascade-test-meeting', 'cascade-test-meeting') RETURNING id, type`
     );
