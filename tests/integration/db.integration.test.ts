@@ -40,7 +40,9 @@ describe("database schema", () => {
     // Two decision nodes (natural_key IS NULL) must NOT collide with each other.
     await pool.query(`INSERT INTO graph_nodes (type, natural_key, label) VALUES ('decision', NULL, 'Decision A')`);
     await pool.query(`INSERT INTO graph_nodes (type, natural_key, label) VALUES ('decision', NULL, 'Decision B')`);
-    const { rows } = await pool.query(`SELECT label FROM graph_nodes WHERE type = 'decision' ORDER BY label`);
+    const { rows } = await pool.query(
+      `SELECT label FROM graph_nodes WHERE type = 'decision' AND label IN ('Decision A', 'Decision B') ORDER BY label`
+    );
     expect(rows).toHaveLength(2);
   });
 
