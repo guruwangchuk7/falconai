@@ -64,7 +64,7 @@ export function createDeepgramSession(
     const payload: DeepgramTranscriptPayload = {
       text: alt.transcript || "",
       isFinal: Boolean(parsed.is_final),
-      durationMs: parsed.duration ? parsed.duration * 1000 : 0,
+      durationMs: parsed.duration ? Math.round(parsed.duration * 1000) : 0,
       confidence: alt.confidence || 0,
       speakerLabel:
         alt.words?.[0]?.speaker !== undefined ? String(alt.words[0].speaker) : undefined,
