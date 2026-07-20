@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Falcon Transcription Service: a Node.js/TypeScript service that joins a Zoom meeting as a bot via RTMS (Realtime Media Streams), transcribes audio in real time via Deepgram, persists final transcript events to Postgres, and publishes every event (interim + final) plus meeting-lifecycle events to a Redis Stream. That Redis Stream is the intentional public contract of this subsystem — it is the first sub-project of a larger planned system ("Falcon") where downstream consumers (a Knowledge Graph Builder, per-role AI agents, a coordinator) will read from it. Those consumers do not exist yet in this repo; do not build them without a design doc.
+Falcon Transcription Service: a Node.js/TypeScript service that joins a Zoom meeting as a bot via RTMS (Realtime Media Streams), transcribes audio in real time via Deepgram, persists final transcript events to Postgres, and publishes every event (interim + final) plus meeting-lifecycle events to a Redis Stream. That Redis Stream is the intentional public contract of this subsystem — it is the first sub-project of a larger planned system ("Falcon"). A second sub-project, the **Knowledge Graph Builder**, now exists in this repo too (see its own section below) — it polls Postgres for ended meetings rather than consuming the Redis Stream directly (see that section for why). Further downstream consumers (per-role AI agents, a coordinator) do not exist yet; do not build them without a design doc — see `ROADMAP.md`'s "What's next for the full Falcon vision".
 
-Read `docs/superpowers/specs/2026-07-15-meeting-ingestion-transcription-pipeline-design.md` for the full design rationale and `docs/superpowers/plans/2026-07-15-meeting-ingestion-transcription-pipeline.md` for the task-by-task implementation plan (both still accurate references for *why* things are shaped the way they are).
+Read `docs/superpowers/specs/2026-07-15-meeting-ingestion-transcription-pipeline-design.md` for the full design rationale and `docs/superpowers/plans/2026-07-15-meeting-ingestion-transcription-pipeline.md` for the task-by-task implementation plan (both still accurate references for *why* things are shaped the way they are). The Knowledge Graph Builder has its own equivalent pair: `docs/superpowers/specs/2026-07-20-knowledge-graph-builder-design.md` and `docs/superpowers/plans/2026-07-20-knowledge-graph-builder.md`.
 
 Zoom RTMS requires purchased "Developer Pack" credits unavailable on this account, so a second meeting-source ("Falcon Meet") was built on LiveKit Cloud (free tier) instead — see the "LiveKit-based ingestion" section below for the architecture, and `ROADMAP.md` for current status. **Complete and fully verified live** as of 2026-07-20, including a real two-person test — see "What's verified vs. unverified" below.
 
@@ -24,12 +24,13 @@ npm run spike:rtms                    # tsx scripts/rtms-capability-check.ts -- 
 npm run verify:live-audio -- <file>   # tsx scripts/live-audio-verification.ts -- real Deepgram/Postgres/Redis test from an audio file, no Zoom needed
 npm run dev:livekit                   # tsx src/server/livekitIndex.ts -- the LiveKit ("Falcon Meet") server entry point, sibling to `npm run dev`
 npm run spike:livekit                 # tsx scripts/livekit-capability-check.ts -- manual LiveKit Cloud probe, see LiveKit Architecture section below
+npm run dev:kg                        # tsx src/server/knowledgeGraphIndex.ts -- the Knowledge Graph worker entry point, see its section below
 ```
 
 Local dependencies for integration/contract tests (not started automatically):
 - Postgres reachable at `DATABASE_URL`, with `npm run migrate` already run against database `falcon_transcription`.
 - Redis reachable at `REDIS_URL`.
-- Copy `.env.example` to `.env` and fill in `DATABASE_URL`/`REDIS_URL` at minimum; `ZM_RTMS_CLIENT`/`ZM_RTMS_SECRET`/`ZOOM_WEBHOOK_SECRET_TOKEN`/`DEEPGRAM_API_KEY` are only needed to run the real Zoom server (`npm run dev`) against a live meeting; `LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`/`LIVEKIT_URL` are only needed to run the LiveKit server (`npm run dev:livekit`) or its capability spike (`npm run spike:livekit`).
+- Copy `.env.example` to `.env` and fill in `DATABASE_URL`/`REDIS_URL` at minimum; `ZM_RTMS_CLIENT`/`ZM_RTMS_SECRET`/`ZOOM_WEBHOOK_SECRET_TOKEN`/`DEEPGRAM_API_KEY` are only needed to run the real Zoom server (`npm run dev`) against a live meeting; `LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`/`LIVEKIT_URL` are only needed to run the LiveKit server (`npm run dev:livekit`) or its capability spike (`npm run spike:livekit`); `ANTHROPIC_API_KEY` is only needed to run the Knowledge Graph worker (`npm run dev:kg`) against real meetings.
 
 **`@zoom/rtms` cannot run on Windows** — no native binary for that platform (its own `package.json` restricts `os` to `linux`/`darwin`). `npm install` requires `--force` on Windows for this reason. `npm run dev`, `realRtmsClient.ts`, `realWebhookSource.ts`, and anything that imports `@zoom/rtms` transitively can only be *type-checked* (`npm run build`), never executed, on Windows. This is a real, permanent platform constraint, not a todo.
 
