@@ -161,19 +161,32 @@ Second meeting-source, built as an alternative to Zoom RTMS (blocked on billing,
   webhook-testing gotchas" section for the reusable manual-trigger recipe.
   **This closes the 11-task LiveKit Meeting Ingestion Implementation Plan.**
 
+## Done (code): Knowledge Graph Builder — all 9 tasks complete, manual/live verification still pending
+
+Sub-project 2, built per `docs/superpowers/specs/2026-07-20-knowledge-graph-builder-design.md` and `docs/superpowers/plans/2026-07-20-knowledge-graph-builder.md` (9-task plan): a standalone worker (`npm run dev:kg`) that polls the `meetings` table for ended meetings lacking a completed graph build, then drives each through `TranscriptFetcher` (Postgres → formatted text) → `DecisionExtractor` (real Claude, `claude-opus-4-8`, forced structured JSON output via `@anthropic-ai/sdk`) → `GraphWriter` (idempotent transactional Postgres upsert into new `graph_nodes`/`graph_edges` tables), tracked for crash-recovery/idempotency via a new `graph_builds` table.
+
+All 9 tasks committed and 80/80 automated tests passing (`db.integration.test.ts` schema tests, `transcriptFormatter`/`transcriptFetcher`/`decisionExtractor`/`graphBuildStore`/`graphWriter`/`knowledgeGraphWorker` unit+integration tests, and `knowledgeGraphPipeline.integration.test.ts`'s full end-to-end test). `realAnthropicExtractionClient.ts` follows the repo's "real adapter" convention (untested, needs a live API key), matching `realRtmsClient.ts`/`realLiveKitRoom.ts`.
+
+**Two real bugs found and fixed in this session (after a laptop restart interrupted the prior one) while re-verifying the suite was still green:**
+- **Deadlock on every single `npm test` run**: the `1dcd8b6` fix (`ON DELETE CASCADE` on `graph_builds.meeting_id`) ran its `ALTER TABLE DROP/ADD CONSTRAINT` unconditionally on every `migrate()` call. Since 8 integration test files each call `migrate()` in their own `beforeAll` and vitest runs files concurrently, every test run raced 8 connections for the same `ACCESS EXCLUSIVE` lock against other files' concurrent row-level locks on `meetings`/`graph_builds`, reliably deadlocking. Fixed by guarding the `ALTER` behind a `pg_constraint` check so it only ever runs once per database.
+- **Cross-test data pollution**: `KnowledgeGraphWorker.pollOnce()` calls the real, unscoped `GraphBuildStore.findMeetingsNeedingBuild()`, which sweeps every `'ended'` meeting in the database — including other test files' concurrently-running fixture meetings and real leftover meetings from prior manual LiveKit verification (`falcon-meet`, `Demo Room`, `live-audio-verification-*`, etc.). `knowledgeGraphPipeline.integration.test.ts` was calling `pollOnce()` directly, writing its fake extractor's canned decision into all of them; `graphWriter.integration.test.ts`'s unscoped decision-count query then picked up that pollution. Fixed by switching the pipeline test to the already-public, scoped `processMeeting(id)` instead of `pollOnce()`, and scoping `graphWriter`'s decision query to its own meeting via the `MADE_IN` edge (same pattern already used elsewhere for this exact class of bug, e.g. `0abfa99`).
+- Note: the shared dev Postgres still has stale `graph_builds` rows marked `'completed'` for several real meetings (`falcon-meet`, `Demo Room`, the `live-audio-verification-*` runs) with **fake test-generated decision nodes** attached, written during the buggy runs above before the fix. Harmless to leave (nothing currently reads this data), but worth a manual `DELETE FROM graph_builds WHERE meeting_id IN (...)` if those specific meetings are ever meant to get a real graph build.
+
+**Not yet done: manual/live verification** (the plan's final, unautomated step). Needs: `ANTHROPIC_API_KEY` in `.env` (currently blank — `.env` itself is also missing the `LIVEKIT_API_KEY`/`SECRET`/`URL` values noted as added on 2026-07-19, so those need re-entry too, from whatever secret manager/notes they were originally copied from), then run a real `npm run dev:livekit` meeting with a clear spoken decision or two, `npm run dev:kg` alongside it, and after `KG_POLL_INTERVAL_MS` query `graph_nodes`/`graph_edges` directly to confirm the extracted decisions and speaker attribution match what was actually said.
+
 ## What's next for the full Falcon vision
 
-Sub-project 1 is only the "ears" — real-time listening, transcription, and publishing to a Redis Stream. Everything below is **not built yet**; each needs its own brainstorm → spec → plan → implementation cycle, same as sub-project 1 did. This list is the long-term architecture already captured in the design spec (`docs/superpowers/specs/2026-07-15-meeting-ingestion-transcription-pipeline-design.md`, "Long-term Falcon architecture" section) as context, not a design.
+Sub-project 1 is the "ears" — real-time listening, transcription, and publishing to a Redis Stream. Sub-project 2 (Knowledge Graph Builder, above) is code-complete pending live verification. Everything below that is **not built yet**; each needs its own brainstorm → spec → plan → implementation cycle, same as sub-projects 1 and 2 did. This list is the long-term architecture already captured in the design spec (`docs/superpowers/specs/2026-07-15-meeting-ingestion-transcription-pipeline-design.md`, "Long-term Falcon architecture" section) as context, not a design.
 
 ```
 Redis Stream (done)
   │
   ▼
-Knowledge Graph Builder      <- turns raw transcript events into structured decisions/entities
-  │
+Knowledge Graph Builder      <- turns raw transcript events into structured decisions/entities (code
+  │                              complete, pending live verification -- see above)
   ▼
-Decision Extractor           <- identifies concrete decisions made during discussion
-  │
+Decision Extractor           <- identifies concrete decisions made during discussion (done, part of
+  │                              the Knowledge Graph Builder above)
   ▼
 Entity Resolver              <- resolves people/features/tickets mentioned to stable identities
   │
@@ -195,8 +208,8 @@ Main Falcon Coordinator      <- has been listening from the start; mediates when
 
 Realistic order to tackle these (each is its own sub-project, brainstormed separately when we get there):
 
-1. **Knowledge Graph Builder** — the natural next step once the transcript stream is proven live; without it, agents have no structured context to reason over.
-2. **Dynamic Agent Manager** — creates the actual per-role agents; depends on the Knowledge Graph existing (even a minimal version) to seed agents with real context.
+1. ~~**Knowledge Graph Builder**~~ — code-complete (above); the remaining step is live verification, not new design/implementation.
+2. **Dynamic Agent Manager** — creates the actual per-role agents; depends on the Knowledge Graph existing (even a minimal version) to seed agents with real context. Now the natural next sub-project to brainstorm.
 3. **Main Falcon Coordinator** — the mediation/debate logic; depends on multiple agents already existing to have something to coordinate between.
 
 None of these have a UI either, by the same reasoning as sub-project 1 — unless we decide participants need to *see* agent output live in the meeting, which would be its own design decision when we get there.
