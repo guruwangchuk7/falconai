@@ -21,6 +21,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.3",
     "@livekit/rtc-node": "^0.13.31",
     "@zoom/rtms": "^1.1.0",
     "dotenv": "^17.4.2",
