@@ -28,7 +28,24 @@ Left off here on 2026-07-21 after a laptop restart interrupted the session. Code
 ```
 graph build failed for meeting falcon-meet ApiError: {"error":{"code":404,"message":"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.","status":"NOT_FOUND"}}
 ```
-`graph_builds.error` for `falcon-meet` now holds that exact message; `status = 'failed'`. Root cause: `GEMINI_MODEL = "gemini-2.5-flash"` is hardcoded in `src/knowledgeGraph/realGeminiExtractionClient.ts` (line 5) and that model has been retired for new API users. **Next task**: pick a currently-available Gemini model (check Google's current model list — `gemini-2.5-flash` has a successor/replacement by now) and update that one constant, then re-run this same retry procedure (delete the `falcon-meet` `graph_builds` row, restart `npm run dev:kg`, wait one poll interval, check `graph_builds`/`graph_nodes`/`graph_edges`). No other code changes should be needed — extraction, writing, and worker orchestration are otherwise unexercised by this failure. The `npm run dev:kg` worker from this retry was left running in the background (it will not auto-retry the now-`failed` `falcon-meet` row per `GraphBuildStore`'s documented "failed is never auto-retried" behavior, but will still poll for any other outstanding meetings) — find and stop it before starting a new one for the next attempt.
+`graph_builds.error` for `falcon-meet` now holds that exact message; `status = 'failed'`. Root cause: `GEMINI_MODEL = "gemini-2.5-flash"` is hardcoded in `src/knowledgeGraph/realGeminiExtractionClient.ts` (line 5) and that model has been retired for new API users. The `npm run dev:kg` worker from this retry was left running in the background, then stopped at the start of the next task below.
+
+**Fixed and verified 2026-07-21: the model-name fix closed out live verification.** Changed line 5 of `src/knowledgeGraph/realGeminiExtractionClient.ts` from `GEMINI_MODEL = "gemini-2.5-flash"` to `GEMINI_MODEL = "gemini-3.1-flash-lite"` (smoke-tested against the real API beforehand with the exact `responseMimeType`/`responseSchema` structured-output config this file uses). Stopped the three stale `npm run dev:kg` PIDs from the failed retry above (they were still running the old, now-retired model name), deleted the stale `failed` `graph_builds` row for `falcon-meet` again, and started a fresh `npm run dev:kg`. After one poll interval:
+```
+psql "$DATABASE_URL" -c "SELECT meeting_id, status, error FROM graph_builds WHERE meeting_id='falcon-meet';"
+ meeting_id  |  status   | error
+-------------+-----------+-------
+ falcon-meet | completed |
+```
+`status = completed`, no error — the real live Gemini API call succeeded this time. Querying the decision nodes scoped through `MADE_IN` (per `CLAUDE.md`'s documented gotcha about unscoped queries in this shared dev database) returned three real decisions, all correctly attributed via `MADE` edges to speaker `Guru Wangchuk`:
+```
+                        label
+-----------------------------------------------------
+ To double the principal lead.
+ I need it twice.
+ We designed it to ship the new feature next Friday.
+```
+This is the real spoken decision expected from Step 6 of the retry procedure ("ship the new feature next Friday"), correctly attributed to the real participant identity. **This closes out live verification of the Knowledge Graph Builder's extraction path** — the sub-project's remaining open item is now only the fresh-LiveKit-meeting end-to-end run noted in `CLAUDE.md`. A fresh `npm run dev:kg` worker was left running in the background for continued use.
 
 ## Verified 2026-07-16: real Deepgram/Postgres/Redis pipeline works end-to-end
 

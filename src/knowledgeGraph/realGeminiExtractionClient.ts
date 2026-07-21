@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import type { ExtractionClientLike } from "./decisionExtractor.types";
 import type { ExtractionResult } from "./knowledgeGraph.types";
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-3.1-flash-lite";
 
 // Gemini's schema dialect is an OpenAPI subset -- unlike Anthropic's JSON
 // Schema support, it has no `additionalProperties` field, so it's omitted
