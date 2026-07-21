@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { AnthropicExtractionClientLike } from "./decisionExtractor.types";
+import type { ExtractionClientLike } from "./decisionExtractor.types";
 import type { ExtractionResult } from "./knowledgeGraph.types";
 
 const EXTRACTION_SCHEMA = {
@@ -40,7 +40,7 @@ const EXTRACTION_PROMPT_PREFIX =
   "topics/entities mentioned in the transcript even if not tied to a specific decision.\n\n" +
   "Transcript:\n";
 
-export function createRealAnthropicExtractionClient(apiKey: string): AnthropicExtractionClientLike {
+export function createRealAnthropicExtractionClient(apiKey: string): ExtractionClientLike {
   const client = new Anthropic({ apiKey });
 
   return {

@@ -1,8 +1,8 @@
-import type { AnthropicExtractionClientLike } from "./decisionExtractor.types";
+import type { ExtractionClientLike } from "./decisionExtractor.types";
 import type { ExtractionResult } from "./knowledgeGraph.types";
 
 export class DecisionExtractor {
-  constructor(private readonly client: AnthropicExtractionClientLike) {}
+  constructor(private readonly client: ExtractionClientLike) {}
 
   async extract(transcriptText: string): Promise<ExtractionResult> {
     if (!transcriptText.trim()) {
