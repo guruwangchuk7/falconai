@@ -7,10 +7,7 @@ Left off here on 2026-07-21 after a laptop restart interrupted the session. Code
 1. **Start Postgres + Redis** (not Windows services — manual every session):
    - `pg_ctl -D C:\Users\dell2\scoop\persist\postgresql\data start`
    - from `C:\Users\dell2\scoop\apps\redis\current`: `redis-server redis.conf --daemonize yes`
-2. **Restore `.env`** — it's stale (dated Jul 16) and missing keys that used to be there:
-   - `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL` (project `falcon-ai-vzhdw96i.livekit.cloud`) — re-copy from wherever you originally got them (LiveKit Cloud dashboard → your project → Settings → Keys).
-   - `ANTHROPIC_API_KEY` — new, needed for the Knowledge Graph worker's real Claude calls. Get one from console.anthropic.com if you don't have one handy.
-   - `KG_POLL_INTERVAL_MS=5000` (optional, defaults to 5000 anyway).
+2. ~~**Restore `.env`**~~ — done (2026-07-21): `LIVEKIT_API_KEY`/`SECRET`/`URL` and `ANTHROPIC_API_KEY` were already present. Since then, `KG_EXTRACTION_PROVIDER=gemini` and `GEMINI_API_KEY` were added too — the Knowledge Graph worker now defaults to Gemini's free tier (zero funding as of this date; Anthropic's real API returned a credit-balance error on first live call). Flip `KG_EXTRACTION_PROVIDER` to `anthropic` once funded.
 3. **Run the manual/live verification** (the one remaining step of the Knowledge Graph Builder plan):
    - `npm run dev:livekit` — join via the browser page, have a real conversation with at least one clear decision spoken out loud.
    - `npm run dev:kg` alongside it, in another terminal.
