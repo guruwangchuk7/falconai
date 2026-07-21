@@ -1,28 +1,14 @@
 # Falcon Roadmap
 
-## Next steps (for you, picking this back up)
+## Next steps
 
-Left off here on 2026-07-21 after a laptop restart interrupted the session. Code is done and committed (see "Done (code): Knowledge Graph Builder" below); everything remaining needs you specifically:
+**The Knowledge Graph Builder sub-project is fully closed (2026-07-21)** — code complete, 80/80 automated tests passing, and now live-verified end-to-end including automatic post-meeting hand-off (see "Done (code): Knowledge Graph Builder" below for the full trail). Postgres/Redis still need to be started manually each session (not Windows services): `pg_ctl -D C:\Users\dell2\scoop\persist\postgresql\data start`, and from `C:\Users\dell2\scoop\apps\redis\current`: `redis-server redis.conf --daemonize yes`.
 
-1. **Start Postgres + Redis** (not Windows services — manual every session):
-   - `pg_ctl -D C:\Users\dell2\scoop\persist\postgresql\data start`
-   - from `C:\Users\dell2\scoop\apps\redis\current`: `redis-server redis.conf --daemonize yes`
-2. ~~**Restore `.env`**~~ — done (2026-07-21): `LIVEKIT_API_KEY`/`SECRET`/`URL` and `ANTHROPIC_API_KEY` were already present. Since then, `KG_EXTRACTION_PROVIDER=gemini` and `GEMINI_API_KEY` were added too — the Knowledge Graph worker now defaults to Gemini's free tier (zero funding as of this date; Anthropic's real API returned a credit-balance error on first live call). Flip `KG_EXTRACTION_PROVIDER` to `anthropic` once funded.
-3. **Run the manual/live verification** (the one remaining step of the Knowledge Graph Builder plan):
-   - `npm run dev:livekit` — join via the browser page, have a real conversation with at least one clear decision spoken out loud.
-   - `npm run dev:kg` alongside it, in another terminal.
-   - Let the meeting end, wait `KG_POLL_INTERVAL_MS` (~5s), then query directly:
-     ```sql
-     SELECT gn.label, gn.attributes FROM graph_nodes gn WHERE gn.type = 'decision';
-     SELECT p.label AS person, d.label AS decision FROM graph_edges e
-       JOIN graph_nodes p ON p.id = e.from_node_id AND p.type = 'person'
-       JOIN graph_nodes d ON d.id = e.to_node_id AND d.type = 'decision'
-       WHERE e.type = 'MADE';
-     ```
-   - Confirm the extracted decision(s) and speaker attribution match what was actually said.
-4. **Optional cleanup**: a few real meetings (`falcon-meet`, `Demo Room`, `live-audio-verification-*`) have fake test-generated decision nodes attached from bugs fixed this session — harmless, but delete their `graph_builds` row if you want a real graph build for them later.
-5. Once verified, this closes the Knowledge Graph Builder sub-project — next up per the roadmap is brainstorming the **Dynamic Agent Manager** (see "What's next for the full Falcon vision" below).
-6. You also have 23 local commits not yet pushed to `origin/master` — push whenever you're ready.
+Two Minor, non-blocking follow-ups flagged by the final code review, whenever convenient:
+1. `knowledgeGraphIndex.ts`'s `createExtractionClient()` fails loud on an invalid `KG_EXTRACTION_PROVIDER`, but not on a missing/empty API key for whichever provider is selected — could validate that too for full startup-time safety.
+2. That same function has no unit test (only genuinely live-credential-requiring code is exempt by convention) — extracting it to its own module would make a 3-line regression test possible.
+
+Next up: brainstorming the **Dynamic Agent Manager** (see "What's next for the full Falcon vision" below) — the next sub-project in the long-term architecture, now that a working Knowledge Graph exists to seed it with real context.
 
 **Retried 2026-07-21 (after switching to Gemini): still failed, new blocker found, next task identified.** Postgres/Redis were already running; `.env` already had `GEMINI_API_KEY`/`KG_EXTRACTION_PROVIDER=gemini` from the switch above. Deleted the stale `failed` `graph_builds` row for `falcon-meet` (the Anthropic credit-balance one) so the worker would retry it, then started `npm run dev:kg` fresh (no old process was running). It reached a real live Gemini API call this time — a real improvement over the Anthropic attempt, which never got past billing — but the call itself failed:
 ```
@@ -45,7 +31,9 @@ psql "$DATABASE_URL" -c "SELECT meeting_id, status, error FROM graph_builds WHER
  I need it twice.
  We designed it to ship the new feature next Friday.
 ```
-This is the real spoken decision expected from Step 6 of the retry procedure ("ship the new feature next Friday"), correctly attributed to the real participant identity. **This closes out live verification of the Knowledge Graph Builder's extraction path** — the sub-project's remaining open item is now only the fresh-LiveKit-meeting end-to-end run noted in `CLAUDE.md`. A fresh `npm run dev:kg` worker was left running in the background for continued use.
+This is the real spoken decision expected from Step 6 of the retry procedure ("ship the new feature next Friday"), correctly attributed to the real participant identity. This closed out live verification of the Knowledge Graph Builder's extraction path against already-collected transcript data — the one remaining gap was proving the *automatic* hand-off (meeting ends → worker discovers and builds it on its own next poll, no manual `graph_builds` row deletion) against a *fresh* live meeting, not a retry against old data.
+
+**Closed 2026-07-21: fresh live meeting, fully automatic hand-off confirmed.** Restarted `npm run dev:kg` (it had stopped since the earlier session) and re-triggered the bot into `falcon-meet` via the same manual-signed-webhook technique (LiveKit Cloud webhook delivery wasn't set up for this session; see `CLAUDE.md`'s "Local webhook-testing gotchas"). Deleted the existing `completed` `graph_builds` row *before* the new meeting started (not after it ended) specifically so this run would test automatic discovery, not another manual retry. A real person joined, spoke a greeting and a new decision ("we decided to rename the project to Falcon Two"), and left — the room was ended via the same webhook technique. Within one poll interval, `graph_builds.status` went to `'completed'` with **no manual intervention after the meeting ended** — the worker found and built it entirely on its own. The new utterance was garbled by Deepgram into nonsense ("the project to telecom to... Twin state.") and Gemini correctly did not fabricate a decision from it; the three previously-known decisions were re-extracted from the meeting's full transcript history and correctly re-attributed to `Guru Wangchuk`. **This closes the Knowledge Graph Builder sub-project's live verification entirely** — both the extraction call itself and the automatic post-meeting hand-off are now confirmed against real infrastructure.
 
 ## Verified 2026-07-16: real Deepgram/Postgres/Redis pipeline works end-to-end
 
@@ -255,7 +243,7 @@ Main Falcon Coordinator      <- has been listening from the start; mediates when
 
 Realistic order to tackle these (each is its own sub-project, brainstormed separately when we get there):
 
-1. ~~**Knowledge Graph Builder**~~ — code-complete (above); the remaining step is live verification, not new design/implementation.
+1. ~~**Knowledge Graph Builder**~~ — code-complete and fully live-verified (above), including automatic post-meeting hand-off. Done.
 2. **Dynamic Agent Manager** — creates the actual per-role agents; depends on the Knowledge Graph existing (even a minimal version) to seed agents with real context. Now the natural next sub-project to brainstorm.
 3. **Main Falcon Coordinator** — the mediation/debate logic; depends on multiple agents already existing to have something to coordinate between.
 
