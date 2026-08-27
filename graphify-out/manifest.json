@@ -1,0 +1,27 @@
+{
+  ".specify/memory/constitution.md": {
+    "mtime": 1787836450.1754448,
+    "ast_hash": "f7bd1ba756ce86e8c73cf801ac806af0",
+    "semantic_hash": "f7bd1ba756ce86e8c73cf801ac806af0"
+  },
+  "CLAUDE.md": {
+    "mtime": 1787836421.7233672,
+    "ast_hash": "9977b80a9e291b150bd1d53180b41247",
+    "semantic_hash": "9977b80a9e291b150bd1d53180b41247"
+  },
+  "PRD.md": {
+    "mtime": 1787836173.0264134,
+    "ast_hash": "f630e3a85f8a6b1d4e3af47cf4f29091",
+    "semantic_hash": "f630e3a85f8a6b1d4e3af47cf4f29091"
+  },
+  "README.md": {
+    "mtime": 1787836640.208761,
+    "ast_hash": "3b675e98822c71f2a5e1c52e5e76e76b",
+    "semantic_hash": "3b675e98822c71f2a5e1c52e5e76e76b"
+  },
+  "design.md": {
+    "mtime": 1787836380.2798293,
+    "ast_hash": "3b88f9f6ed3184f65ac6f712e9fc70cd",
+    "semantic_hash": "3b88f9f6ed3184f65ac6f712e9fc70cd"
+  }
+}

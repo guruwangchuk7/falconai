@@ -1,0 +1,1004 @@
+# Falcon — Landing Page Design (`design.md`)
+
+> **Purpose of this file.** This is the existing, hand-built HTML/CSS landing page for
+> falcon.ai. It is the **design source of truth** for the marketing site. When Falcon's
+> web app is transformed into **Next.js 15 (App Router) + TypeScript + Tailwind + shadcn/ui**
+> (per PRD §11 and §13), this design **must be understood and preserved** — the visual
+> system, layout, copy, and interaction behavior below are intentional and should carry
+> over faithfully. Do **not** redesign; **re-platform**.
+>
+> Two parts:
+> 1. **Design System Notes** — a map of the intent behind the markup, so the design can be
+>    reproduced in React/Tailwind without losing anything.
+> 2. **Reference HTML (verbatim)** — the complete original file, unchanged.
+
+---
+
+## Part 1 — Design System Notes ("Quiet Voltage")
+
+The design system is named **Quiet Voltage** in the source. Its thesis: an off-white,
+paper-like shell in warm near-black ink, restrained to a single accent gesture, with
+exactly **one** grainy marble gradient surface used as the hero accent. Everything else is
+flat, muted, and meeting-safe — consistent with PRD §11's "Meeting-safe visual weight,"
+"Evidence is the interface," and "Scannable in three seconds."
+
+### Fonts
+- **Instrument Sans** — display / headings (weights 400, 500). Used for `.display-*`,
+  `.brand`, card `h3`, tier names/prices, quote text.
+- **Inter** — body / UI (weights 400, 500, 600). Default `body` font.
+- Loaded from Google Fonts. In Next.js, migrate to `next/font/google` for both families
+  (self-hosted, no layout shift).
+
+### Color tokens (from `:root`)
+Preserve these exact values as Tailwind theme tokens / CSS variables:
+
+| Role | Token | Value |
+|---|---|---|
+| Surface | `--canvas` | `#f5f5f5` |
+| Surface | `--canvas-soft` | `#fafafa` |
+| Surface | `--surface-card` | `#ffffff` |
+| Surface | `--surface-strong` | `#f0efed` |
+| Surface | `--surface-dark` | `#0c0a09` |
+| Ink/text | `--ink` | `#0c0a09` |
+| Ink/text | `--primary` | `#292524` |
+| Ink/text | `--primary-active` | `#0c0a09` |
+| Ink/text | `--body-strong` | `#292524` |
+| Ink/text | `--body` | `#4e4e4e` |
+| Ink/text | `--muted` | `#777169` |
+| Ink/text | `--muted-soft` | `#a8a29e` |
+| Accent | `--brass-deep` | `#8f5e12` |
+| Accent | `--forest` | `#3f6b52` |
+| On-dark | `--on-dark` | `#ffffff` |
+| On-dark | `--on-dark-soft` | `#a8a29e` |
+| Hairline | `--hairline` | `#e7e5e4` |
+| Hairline | `--hairline-strong` | `#d6d3d1` |
+| Semantic | `--success` | `#16a34a` |
+| Semantic | `--error` | `#dc2626` |
+| Spacing | `--section` | `96px` (→ `64px` at ≤640px) |
+| Layout | `--max` | `1200px` |
+
+### Type scale (preserve line-heights and letter-spacing)
+`.display-mega` 64px · `.display-xl` 48px · `.display-lg` 36px · `.display-md` 32px ·
+`.display-sm` 24px · `.title-md` 20px · `.body-md` 16px · `.caption-upper` 12px uppercase,
+letter-spacing 0.96px. Responsive: `.display-mega` → 48px at ≤1024px, → 34px at ≤640px.
+
+### The "one grainy surface" rule
+The **only** textured element is the hero **marble** sphere and, echoing it, the featured
+pricing tier and the build-log mosaic tiles. The grain is an inline SVG `feTurbulence`
+fractal-noise filter used as a `data:` URI background with `mix-blend-mode: overlay`. This
+is deliberate and load-bearing to the aesthetic — **reproduce it exactly** (as a CSS
+background or a small reusable component). Never make these surfaces flat.
+
+Gradient recipes to preserve verbatim (see `.marble`, `.tier.featured`, and the
+`.grad-brass / .grad-blue / .grad-forest / .grad-ink` tile classes in the HTML): layered
+`radial-gradient` highlights + a diagonal `linear-gradient`, blue→red for the marble/hero,
+with per-tile brass/forest/ink variants.
+
+### The single CTA color
+The **ink pill** (`.btn-primary`, background `--primary`) is the only saturated CTA. On
+grainy surfaces it inverts to white (`.btn-oncolor` / `.btn-white`). Outline buttons
+(`.btn-outline`) are the secondary action. Keep this discipline: one primary CTA style
+across the whole site.
+
+### Component inventory (map each to a React component during migration)
+- **Nav** — sticky, blurred (`backdrop-filter`), hairline bottom border, brand SVG mark
+  (the falcon "M/wing" path), links, one primary CTA. Falcon logo is an inline SVG — keep
+  the exact path.
+- **Hero** — two-column grid (`1.15fr / 1fr`), display-mega headline, lede, two actions, a
+  text note, and the marble accent surface with a caption.
+- **Social proof** — bordered band, three stat blocks with dividers.
+- **Problem / Why** — section head only (eyebrow + `display-lg` + paragraph).
+- **Features** — 3-card grid; each card = circular icon plate (inline SVG stroke icons) +
+  `h3` + paragraph; subtle hover shadow.
+- **How it works** — 3 numbered lines (`01/02/03`), title + subtitle.
+- **Differentiator** — section head + 2-column compare (`.them` light card vs `.us` ink
+  card), each with dash/arrow marked lines.
+- **Pricing** — 4-tier grid (Solo / **Team** featured / Enterprise / Pilot); featured tier
+  is the grainy gradient surface with a badge; each tier = name, price, desc, CTA, feature
+  list with check marks. Responsive: 4→2→1 columns.
+- **Founder story** — centered blockquote in Instrument Sans + attribution row.
+- **Build log / updates** — tab switcher (Milestones / Behind the build) + an **asymmetric
+  3-column mosaic** of gradient "tiles" (left / tall middle / offset-down right), each a
+  grain-textured gradient card with tag, title, date; "Follow the build" outline CTA.
+- **Waitlist** — centered; email input pill + primary submit; live status message region
+  (`aria-live="polite"`); fine print.
+- **Footer** — brand row, 4 link columns (Product / Company / Trust + brand blurb), legal
+  row.
+
+### Interaction & accessibility behavior to preserve
+- `scroll-behavior: smooth` on anchor nav.
+- Buttons/cards: 150–180ms transitions only (PRD §11: "no animation over 150ms" — honor
+  the spirit; keep transitions minimal).
+- Card hover: soft shadow lift. Tile hover: title underline.
+- Inputs: focus grows a 2px ink border (compensated padding to avoid reflow); `.invalid`
+  turns the border red.
+- `@media (prefers-reduced-motion: reduce)` disables all transitions and smooth scroll —
+  **keep this**.
+- Full responsive breakpoints at 1024 / 900 / 768 / 640 / 560px (see media queries).
+- ARIA: waitlist status uses `role="status"` + `aria-live`; marble has `role="img"` +
+  `aria-label`; icons are decorative SVGs.
+
+### Waitlist form logic (see `<script>`)
+- Client-side email validation, demo-mode fallback, and a **Supabase REST insert** in live
+  mode (anon key + RLS insert-only policy, documented inline in the HTML).
+- During Next.js migration: move this to a proper API route / server action or a typed
+  Supabase client, but **preserve the exact UX** — inline validation, `Joining…` pending
+  state, the specific success/duplicate/error copy, and the "no spam" fine print. The 201 /
+  409 / error handling and messages should carry over unchanged in tone.
+
+### Copy — do not rewrite
+All headline, body, feature, pricing, founder-quote, and footer copy is intentional and
+should be migrated **verbatim**. Notably: "An AI teammate for every meeting.", the
+text-only / never-speaks framing, the "Reads the work / Surfaces the gap" marble caption,
+the Solo/Team/Enterprise/Pilot tier text, and Guru Wangchuk's founder quote ("Founder,
+building in Bhutan").
+
+### Migration checklist (marketing site → Next.js, when approved)
+1. Port `:root` tokens into `globals.css` / Tailwind theme; keep variable names.
+2. `next/font` for Instrument Sans + Inter.
+3. One `<Grain>` / gradient-surface primitive reused by hero marble, featured tier, tiles.
+4. Componentize per the inventory above; keep section `id`s (`#how`, `#features`,
+   `#pricing`, `#waitlist`, `#why-falcon`, `#story`, `#updates`) for anchor links.
+5. Reproduce all breakpoints and the reduced-motion query.
+6. Re-home the waitlist submit to a server action / API route; preserve UX and copy exactly.
+7. Keep it a static/mostly-static marketing route; shadcn/ui may back the app dashboard,
+   but the marketing page's bespoke look must survive — do not flatten it into stock shadcn.
+
+---
+
+## Part 2 — Reference HTML (verbatim)
+
+The complete original landing page follows, unchanged. This is the artifact to preserve.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Falcon — an AI teammate for every meeting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   FALCON LANDING — built on the "Quiet Voltage" design system
+   Off-white shell, warm near-black ink, Instrument Sans + Inter,
+   ink pill as the only CTA color, one grainy marble surface.
+   ============================================================ */
+:root{
+  /* surface */
+  --canvas:#f5f5f5;
+  --canvas-soft:#fafafa;
+  --surface-card:#ffffff;
+  --surface-strong:#f0efed;
+  --surface-dark:#0c0a09;
+  /* ink & text */
+  --ink:#0c0a09;
+  --primary:#292524;
+  --primary-active:#0c0a09;
+  --body-strong:#292524;
+  --body:#4e4e4e;
+  --muted:#777169;
+  --muted-soft:#a8a29e;
+  --brass-deep:#8f5e12;
+  --forest:#3f6b52;
+  --on-dark:#ffffff;
+  --on-dark-soft:#a8a29e;
+  /* hairlines */
+  --hairline:#e7e5e4;
+  --hairline-strong:#d6d3d1;
+  /* semantic */
+  --success:#16a34a;
+  --error:#dc2626;
+  /* spacing */
+  --section:96px;
+  --max:1200px;
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+html{ scroll-behavior:smooth; }
+body{
+  background:var(--canvas);
+  color:var(--body);
+  font-family:'Inter', -apple-system, sans-serif;
+  font-size:16px; line-height:1.5; letter-spacing:0.16px;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- type roles ---------- */
+.display-mega{ font-family:'Instrument Sans',sans-serif; font-weight:400; font-size:64px; line-height:1.05; letter-spacing:-0.5px; color:var(--ink); }
+.display-xl{ font-family:'Instrument Sans',sans-serif; font-weight:400; font-size:48px; line-height:1.1; letter-spacing:-0.3px; color:var(--ink); }
+.display-lg{ font-family:'Instrument Sans',sans-serif; font-weight:500; font-size:36px; line-height:1.17; letter-spacing:-0.2px; color:var(--ink); }
+.display-md{ font-family:'Instrument Sans',sans-serif; font-weight:500; font-size:32px; line-height:1.13; color:var(--ink); }
+.display-sm{ font-family:'Instrument Sans',sans-serif; font-weight:500; font-size:24px; line-height:1.2; color:var(--ink); }
+.title-md{ font-weight:500; font-size:20px; line-height:1.35; color:var(--body-strong); }
+.body-md{ font-size:16px; line-height:1.5; letter-spacing:0.16px; }
+.body-strong{ font-weight:500; }
+.caption-upper{ font-weight:600; font-size:12px; line-height:1.4; letter-spacing:0.96px; text-transform:uppercase; }
+
+a{ color:inherit; text-decoration:none; }
+
+/* ---------- layout ---------- */
+.wrap{ max-width:var(--max); margin:0 auto; padding:0 24px; }
+.band{ padding:var(--section) 0; }
+.band-soft{ background:var(--canvas-soft); }
+
+/* ---------- nav ---------- */
+.nav{
+  position:sticky; top:0; z-index:50;
+  background:rgba(245,245,245,0.85); backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--hairline);
+}
+.nav-inner{ max-width:var(--max); margin:0 auto; padding:16px 24px; display:flex; align-items:center; justify-content:space-between; }
+.brand{ display:flex; align-items:center; gap:10px; font-family:'Instrument Sans',sans-serif; font-weight:500; font-size:18px; color:var(--ink); }
+.brand-mark{ width:26px; height:26px; }
+.nav-links{ display:flex; align-items:center; gap:32px; }
+.nav-link{ font-weight:500; font-size:15px; color:var(--body); }
+.nav-link:hover{ color:var(--ink); }
+.nav-cta{ display:flex; align-items:center; gap:12px; }
+
+/* ---------- buttons ---------- */
+.btn{ font-family:'Inter',sans-serif; font-weight:500; font-size:15px; line-height:1; border-radius:9999px; padding:12px 22px; cursor:pointer; border:1px solid transparent; transition:background .15s, color .15s, border-color .15s; display:inline-flex; align-items:center; gap:8px; }
+.btn-primary{ background:var(--primary); color:var(--on-dark); }
+.btn-primary:hover{ background:var(--primary-active); }
+.btn-primary:active{ background:var(--primary-active); }
+.btn-outline{ background:transparent; border-color:var(--hairline-strong); color:var(--ink); }
+.btn-outline:hover{ border-color:var(--ink); }
+.btn-white{ background:#fff; color:var(--ink); }
+.btn-white:hover{ background:#f0efed; }
+
+/* ---------- badge ---------- */
+.badge{ display:inline-flex; align-items:center; gap:8px; background:var(--surface-strong); border-radius:9999px; padding:6px 14px; color:var(--body-strong); }
+.badge .dot{ width:7px; height:7px; border-radius:50%; background:var(--ink); }
+
+/* ---------- hero ---------- */
+.hero{ padding:96px 0 72px; }
+.hero-grid{ display:grid; grid-template-columns:1.15fr 1fr; gap:64px; align-items:center; }
+.hero h1{ margin:22px 0 0; }
+.hero .lede{ font-size:18px; line-height:1.55; color:var(--body); margin-top:22px; max-width:34ch; }
+.hero-actions{ margin-top:32px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.hero-note{ margin-top:16px; font-size:14px; color:var(--muted); }
+
+/* ---------- marble featured surface (the one grainy fill) ---------- */
+.marble{
+  position:relative; aspect-ratio:1/1; width:100%; max-width:420px; margin-left:auto;
+  border-radius:24px; overflow:hidden;
+  background:
+    radial-gradient(120% 120% at 30% 22%, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0) 26%),
+    radial-gradient(150% 150% at 72% 78%, #cc412b 0%, rgba(204,65,43,0) 55%),
+    linear-gradient(135deg, #89b4e5 0%, #5992d6 46%, #cc412b 100%);
+  box-shadow:0 20px 60px rgba(12,10,9,0.22);
+}
+/* film grain over the gradient — the grain is the point, never flat */
+.marble::after{
+  content:''; position:absolute; inset:0; opacity:0.42; mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.marble-caption{ position:absolute; left:22px; bottom:20px; z-index:2; color:#fff; }
+.marble-caption .k{ font-weight:600; font-size:12px; letter-spacing:0.96px; text-transform:uppercase; opacity:0.9; }
+.marble-caption .v{ font-family:'Instrument Sans',sans-serif; font-size:22px; margin-top:4px; }
+
+
+/* ---------- section head ---------- */
+.sec-head{ max-width:60ch; margin-bottom:48px; }
+.sec-head .eyebrow{ color:var(--muted); margin-bottom:16px; }
+.sec-head p{ margin-top:16px; color:var(--body); font-size:17px; }
+
+/* ---------- how it works (simple) ---------- */
+.how-steps{ display:grid; grid-template-columns:repeat(3,1fr); gap:40px; margin-top:32px; }
+.how-line{ display:flex; gap:16px; align-items:flex-start; padding:8px 0 28px; }
+.how-line .hn{ font-family:'Instrument Sans',sans-serif; font-weight:500; font-size:15px; color:var(--muted); flex-shrink:0; width:26px; padding-top:3px; }
+.how-line .htitle{ font-family:'Instrument Sans',sans-serif; font-weight:500; font-size:19px; color:var(--ink); }
+.how-line .hsub{ font-size:15px; color:var(--body); margin-top:10px; letter-spacing:0.15px; line-height:1.6; }
+
+@media(max-width:768px){ .how-steps{ grid-template-columns:1fr; gap:12px; } }
+
+/* ---------- feature grid ---------- */
+.features{ display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+.card{ background:var(--surface-card); border:1px solid var(--hairline); border-radius:16px; padding:24px; transition:box-shadow .18s, transform .18s; }
+.card:hover{ box-shadow:0 4px 16px rgba(0,0,0,0.10); }
+.icon-plate{ width:36px; height:36px; border-radius:50%; background:var(--surface-strong); display:flex; align-items:center; justify-content:center; margin-bottom:16px; color:var(--ink); }
+.card h3{ font-family:'Instrument Sans',sans-serif; font-weight:500; font-size:20px; color:var(--ink); margin-bottom:8px; }
+.card p{ font-size:15px; color:var(--body); }
+
+/* ---------- pricing (4-tier grid) ---------- */
+.price-head{ text-align:center; margin-bottom:20px; }
+.price-head .eyebrow{ color:var(--muted); margin-bottom:16px; }
+.price-note{ text-align:center; color:var(--muted); font-size:14px; margin-bottom:44px; }
+.tiers{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; align-items:stretch; }
+.tier{ display:flex; flex-direction:column; border-radius:16px; padding:28px 24px; background:var(--surface-strong); border:1px solid var(--hairline); }
+.tier .tname{ font-family:'Instrument Sans',sans-serif; font-weight:500; font-size:18px; color:var(--ink); }
+.tier .tprice{ font-family:'Instrument Sans',sans-serif; font-weight:500; font-size:38px; letter-spacing:-0.5px; color:var(--ink); margin-top:14px; line-height:1; }
+.tier .tprice .per{ font-family:'Inter',sans-serif; font-size:14px; font-weight:400; color:var(--muted); letter-spacing:0; }
+.tier .tdesc{ font-size:14px; color:var(--body); margin-top:12px; min-height:40px; letter-spacing:0.15px; }
+.tier .tcta{ margin:22px 0; }
+.tier .tcta .btn{ width:100%; justify-content:center; }
+.tier .tfeat{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:11px; }
+.tier .tfeat li{ display:flex; gap:9px; align-items:flex-start; font-size:14px; color:var(--body); letter-spacing:0.15px; }
+.tier .tfeat li .tk{ color:var(--forest); flex-shrink:0; margin-top:1px; }
+/* featured tier — the one grainy gradient surface */
+.tier.featured{ position:relative; border:none; color:#fff; overflow:hidden;
+  background:linear-gradient(150deg,#89b4e5 0%,#5992d6 52%,#cc412b 120%); }
+.tier.featured::before{ content:''; position:absolute; inset:0; opacity:0.3; mix-blend-mode:overlay; z-index:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+.tier.featured > *{ position:relative; z-index:1; }
+.tier.featured .tname,.tier.featured .tprice{ color:#fff; }
+.tier.featured .tprice .per,.tier.featured .tdesc{ color:rgba(255,255,255,0.85); }
+.tier.featured .tfeat li{ color:rgba(255,255,255,0.92); }
+.tier.featured .tfeat li .tk{ color:#fff; }
+.tier .tbadge{ position:absolute; top:16px; right:16px; font-size:11px; font-weight:600; letter-spacing:0.6px; text-transform:uppercase; background:rgba(255,255,255,0.22); color:#fff; padding:4px 10px; border-radius:9999px; z-index:2; }
+.btn-oncolor{ background:#fff; color:var(--ink); }
+.btn-oncolor:hover{ background:#f0efed; }
+
+@media(max-width:900px){ .tiers{ grid-template-columns:repeat(2,1fr); } }
+@media(max-width:560px){ .tiers{ grid-template-columns:1fr; } }
+
+/* ---------- build log / updates mosaic ---------- */
+.log-head{ text-align:center; margin-bottom:28px; }
+.log-head h2{ margin:0 auto; max-width:22ch; }
+.log-head .eyebrow{ color:var(--muted); margin-bottom:16px; }
+.log-tabs{ display:inline-flex; gap:4px; padding:4px; background:var(--surface-strong); border-radius:9999px; margin:0 auto; }
+.log-tab{ font-size:14px; font-weight:500; color:var(--muted); padding:7px 16px; border-radius:9999px; cursor:pointer; border:none; background:none; transition:background .15s,color .15s; }
+.log-tab.active{ background:var(--surface-card); color:var(--ink); box-shadow:0 1px 3px rgba(12,10,9,0.10); }
+.log-tabs-wrap{ display:flex; justify-content:center; margin-bottom:44px; }
+
+/* asymmetric mosaic: 3 columns, staggered heights like the inspo */
+.mosaic{ display:grid; grid-template-columns:1fr 1.25fr 1fr; gap:20px; align-items:start; }
+.mcol{ display:flex; flex-direction:column; gap:20px; }
+.mcol.mid{ padding-top:0; }
+.mcol.right{ padding-top:56px; }
+.tile{ position:relative; border-radius:16px; overflow:hidden; display:block; color:#fff; text-decoration:none; }
+.tile-img{ position:relative; padding:20px; display:flex; flex-direction:column; justify-content:space-between; min-height:180px; }
+.tile-tall .tile-img{ min-height:330px; }
+.tile-cap{ position:relative; z-index:2; }
+.tile-cap .ttag{ display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; letter-spacing:0.6px; text-transform:uppercase; opacity:0.92; margin-bottom:auto; }
+.tile-cap .ttitle{ font-size:15px; line-height:1.4; font-weight:500; margin-top:12px; max-width:34ch; }
+.tile-cap .tdate{ font-size:12px; opacity:0.8; margin-top:8px; }
+.tile::after{ content:''; position:absolute; inset:0; z-index:1; background:linear-gradient(180deg, rgba(12,10,9,0) 30%, rgba(12,10,9,0.72) 100%); }
+/* gradient-filled tiles (no photo) — layered, marble-like depth like the featured tier */
+.tile.grad-brass{
+  background:
+    radial-gradient(90% 80% at 25% 15%, rgba(255,220,160,0.45) 0%, rgba(255,220,160,0) 45%),
+    radial-gradient(120% 120% at 85% 110%, #8f3d14 0%, rgba(143,61,20,0) 55%),
+    linear-gradient(150deg,#e8862f 0%,#cc5a1e 58%,#a6431a 100%);
+}
+.tile.grad-blue{
+  background:
+    radial-gradient(90% 80% at 25% 15%, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0) 46%),
+    radial-gradient(120% 120% at 88% 112%, #cc412b 0%, rgba(204,65,43,0) 58%),
+    linear-gradient(150deg,#89b4e5 0%,#5992d6 55%,#4f6fa0 100%);
+}
+.tile.grad-forest{
+  background:
+    radial-gradient(90% 80% at 25% 15%, rgba(210,240,220,0.40) 0%, rgba(210,240,220,0) 46%),
+    radial-gradient(120% 120% at 88% 112%, #234034 0%, rgba(35,64,52,0) 58%),
+    linear-gradient(150deg,#4f8368 0%,#3f6b52 58%,#325641 100%);
+}
+.tile.grad-ink{
+  background:
+    radial-gradient(90% 80% at 22% 12%, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0) 44%),
+    radial-gradient(130% 120% at 90% 115%, #4a2f28 0%, rgba(74,47,40,0) 60%),
+    linear-gradient(150deg,#3a3532 0%,#221e1b 60%,#171310 100%);
+}
+.tile-grain::before{
+  content:''; position:absolute; inset:0; z-index:1; opacity:0.42; mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.tile:hover .tile-cap .ttitle{ text-decoration:underline; text-underline-offset:3px; }
+.log-more{ display:flex; justify-content:center; margin-top:40px; }
+
+@media(max-width:900px){
+  .mosaic{ grid-template-columns:1fr 1fr; }
+  .mcol.right{ padding-top:0; }
+}
+@media(max-width:640px){
+  .mosaic{ grid-template-columns:1fr; }
+  .tile-tall .tile-img{ min-height:240px; }
+}
+
+/* ---------- waitlist ---------- */
+.waitlist{ text-align:center; }
+.waitlist .display-lg{ margin-bottom:16px; }
+.waitlist p.sub{ color:var(--body); font-size:17px; max-width:48ch; margin:0 auto 32px; }
+.form-row{ display:flex; gap:12px; max-width:460px; margin:0 auto; }
+.text-input{
+  flex:1; height:48px; padding:0 18px; border-radius:9999px;
+  border:1px solid var(--hairline-strong); background:#fff; color:var(--ink);
+  font-family:'Inter',sans-serif; font-size:15px; letter-spacing:0.15px; outline:none;
+  transition:border-color .15s, box-shadow .15s;
+}
+.text-input::placeholder{ color:var(--muted-soft); }
+.text-input:focus{ border:2px solid var(--ink); padding:0 17px; }
+.text-input.invalid{ border-color:var(--error); }
+.form-row .btn{ height:48px; white-space:nowrap; }
+.form-msg{ min-height:20px; margin-top:16px; font-size:14px; }
+.form-msg.ok{ color:var(--success); }
+.form-msg.err{ color:var(--error); }
+.form-fine{ margin-top:14px; font-size:13px; color:var(--muted); }
+
+/* ---------- social proof ---------- */
+.proof{ border-top:1px solid var(--hairline); border-bottom:1px solid var(--hairline); padding:40px 0; }
+.proof-label{ text-align:center; color:var(--muted); margin-bottom:24px; }
+.proof-row{ display:flex; align-items:center; justify-content:center; gap:64px; flex-wrap:wrap; }
+.proof-stat{ text-align:center; }
+.proof-stat .n{ font-family:'Instrument Sans',sans-serif; font-weight:500; font-size:28px; letter-spacing:-0.2px; color:var(--ink); line-height:1.1; }
+.proof-stat .l{ font-size:14px; color:var(--muted); margin-top:4px; }
+.proof-div{ width:1px; height:32px; background:var(--hairline); }
+
+/* ---------- differentiator ---------- */
+.diff-sub{ margin-top:16px; color:var(--body); font-size:17px; max-width:70ch; }
+.compare{ display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:48px; }
+.compare-card{ padding:28px; border-radius:16px; border:1px solid var(--hairline); }
+.compare-card.them{ background:var(--canvas); }
+.compare-card.us{ background:var(--primary); border-color:var(--primary); }
+.compare-card h4{ font-weight:600; font-size:12px; letter-spacing:0.96px; text-transform:uppercase; margin-bottom:16px; }
+.compare-card.them h4{ color:var(--muted); }
+.compare-card.us h4{ color:var(--muted-soft); }
+.compare-line{ display:flex; align-items:flex-start; gap:10px; margin-bottom:12px; font-size:15px; letter-spacing:0.15px; }
+.compare-line:last-child{ margin-bottom:0; }
+.compare-card.them .compare-line{ color:var(--body); }
+.compare-card.us .compare-line{ color:#ececec; }
+.compare-mark{ flex-shrink:0; }
+.compare-card.them .compare-mark{ color:var(--muted); }
+.compare-card.us .compare-mark{ color:#fff; }
+
+/* ---------- founder story ---------- */
+.founder{ text-align:center; }
+.founder .flabel{ color:var(--muted); margin-bottom:24px; }
+.founder blockquote{
+  border:none; background:none; box-shadow:none; padding:0; margin:0 auto 24px; max-width:52ch;
+  border-radius:0;
+}
+.founder blockquote p{
+  font-family:'Instrument Sans',sans-serif; font-weight:500; font-size:26px; line-height:1.35;
+  letter-spacing:-0.1px; color:var(--ink);
+}
+.founder .attr{ display:flex; align-items:center; justify-content:center; gap:10px; }
+.founder .attr .name{ font-weight:600; font-size:15px; color:var(--ink); }
+.founder .attr .role{ font-size:15px; color:var(--muted); }
+.founder .attr .adot{ width:3px; height:3px; border-radius:50%; background:var(--muted); }
+
+/* ---------- footer ---------- */
+.footer{ background:var(--canvas-soft); border-top:1px solid var(--hairline); padding:64px 0 40px; }
+.footer-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:48px; }
+.footer-cols{ display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:32px; }
+.footer-brandcol .body-md{ color:var(--muted); font-size:14px; max-width:32ch; margin-top:14px; }
+.footer h4{ font-weight:600; font-size:12px; letter-spacing:0.96px; text-transform:uppercase; color:var(--muted); margin-bottom:16px; }
+.footer ul{ list-style:none; }
+.footer li{ margin-bottom:10px; }
+.footer li a{ font-size:15px; color:var(--body); }
+.footer li a:hover{ color:var(--ink); }
+.footer-legal{ margin-top:48px; padding-top:24px; border-top:1px solid var(--hairline); display:flex; justify-content:space-between; color:var(--muted); font-size:13px; flex-wrap:wrap; gap:8px; }
+
+/* ---------- responsive ---------- */
+@media(max-width:1024px){
+  .display-mega{ font-size:48px; }
+  .features,.steps{ grid-template-columns:repeat(2,1fr); }
+  .footer-cols{ grid-template-columns:1fr 1fr; gap:32px 24px; }
+}
+@media(max-width:768px){
+  .nav-links{ display:none; }
+  .hero-grid{ grid-template-columns:1fr; gap:40px; }
+  .marble{ margin:0 auto; max-width:340px; }
+  .hero .lede{ max-width:none; }
+}
+@media(max-width:768px){
+  .compare{ grid-template-columns:1fr; }
+  .proof-row{ gap:32px; }
+  .proof-div{ display:none; }
+}
+@media(max-width:640px){
+  :root{ --section:64px; }
+  .display-mega{ font-size:34px; }
+  .display-xl{ font-size:34px; }
+  .display-lg{ font-size:28px; }
+  .features,.steps{ grid-template-columns:1fr; }
+  .form-row{ flex-direction:column; }
+  .form-row .btn{ width:100%; justify-content:center; }
+  .footer-cols{ grid-template-columns:1fr 1fr; }
+  .footer-top{ flex-direction:column; align-items:flex-start; gap:16px; }
+  .founder blockquote p{ font-size:21px; }
+}
+
+@media(prefers-reduced-motion:reduce){
+  *{ transition:none !important; scroll-behavior:auto !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top">
+      <svg class="brand-mark" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M2 21 C 9 8, 15 5, 16 17 C 17 5, 23 8, 30 21" stroke="#0c0a09" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Falcon
+    </a>
+    <nav class="nav-links">
+      <a class="nav-link" href="#how">How it works</a>
+      <a class="nav-link" href="#features">Features</a>
+      <a class="nav-link" href="#pricing">Pricing</a>
+      <a class="nav-link" href="#waitlist">Waitlist</a>
+    </nav>
+    <div class="nav-cta">
+      <a class="btn btn-primary" href="#waitlist">Join waitlist</a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ============ HERO ============ -->
+  <section class="hero wrap">
+    <div class="hero-grid">
+      <div>
+        <h1 class="display-mega">An AI teammate<br>for every meeting.</h1>
+        <p class="lede">Falcon gives each person in a meeting an AI that has read everything they shipped this sprint — and quietly surfaces what the room is missing, while the decision is still open.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#waitlist">Join the waitlist</a>
+          <a class="btn btn-outline" href="#how">See how it works</a>
+        </div>
+        <p class="hero-note">Text-only. Falcon never speaks in your meeting — it writes to a private panel.</p>
+      </div>
+      <div>
+        <!-- the ONE grainy marble featured surface, spent here -->
+        <div class="marble" role="img" aria-label="Falcon — a grainy marble accent sphere">
+          <div class="marble-caption">
+            <div class="k">Reads the work</div>
+            <div class="v">Surfaces the gap</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SOCIAL PROOF ============ -->
+  <div class="proof">
+    <div class="wrap">
+      <div class="proof-label caption-upper">Join engineers already on the list</div>
+      <div class="proof-row">
+        <div class="proof-stat">
+          <div class="n">200+</div>
+          <div class="l">engineers waitlisted</div>
+        </div>
+        <div class="proof-div"></div>
+        <div class="proof-stat">
+          <div class="n">12</div>
+          <div class="l">pilot teams forming</div>
+        </div>
+        <div class="proof-div"></div>
+        <div class="proof-stat">
+          <div class="n">Zoom · Meet · Teams</div>
+          <div class="l">works on all of them, no bot joins</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PROBLEM / WHY ============ -->
+  <section class="band wrap" id="why">
+    <div class="sec-head">
+      <div class="eyebrow caption-upper">The problem</div>
+      <h2 class="display-lg">The person who knows the answer<br>can't always recall it in the moment.</h2>
+      <p>The PM proposes a feature without knowing an engineer already shipped half of it. The same architecture debate gets re-litigated every quarter because nobody wrote down why. The value was highest <em>during</em> the meeting — and every tool today only summarises after it's over.</p>
+    </div>
+  </section>
+
+  <!-- ============ FEATURES ============ -->
+  <section class="band band-soft" id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="eyebrow caption-upper">What Falcon does</div>
+        <h2 class="display-lg">Three things, quietly.</h2>
+      </div>
+      <div class="features">
+        <div class="card">
+          <div class="icon-plate">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg>
+          </div>
+          <h3>Answers, in your ear</h3>
+          <p>When someone asks you a direct question, your agent checks your own work and puts the answer on your panel — privately. You say it out loud, in your own words.</p>
+        </div>
+        <div class="card">
+          <div class="icon-plate">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-6 0v4M5 9h14l1 12H4L5 9z"/></svg>
+          </div>
+          <h3>Nudges, just for you</h3>
+          <p>"Sarah doesn't know that PR landed." A private line only you see, grounded in a real ticket or commit — never a guess, never shown to the room.</p>
+        </div>
+        <div class="card">
+          <div class="icon-plate">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <h3>Mediation, for the room</h3>
+          <p>When a debate stalls and Falcon holds a fact both sides are missing, it shows one grounded card to everyone — the options, the evidence, and what's needed to decide.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ HOW IT WORKS ============ -->
+  <section class="band wrap" id="how">
+    <div class="sec-head">
+      <div class="eyebrow caption-upper">How it works</div>
+      <h2 class="display-lg">See it work, step by step.</h2>
+    </div>
+    <div class="how-steps">
+      <div class="how-line">
+        <span class="hn">01</span>
+        <div>
+          <div class="htitle">A quiet app on each laptop</div>
+          <div class="hsub">Under 15MB. Nothing joins your call — it hears only your mic, never the room.</div>
+        </div>
+      </div>
+      <div class="how-line">
+        <span class="hn">02</span>
+        <div>
+          <div class="htitle">A private nudge, only for you</div>
+          <div class="hsub">Your agent checks your own work and quietly flags what the room is missing.</div>
+        </div>
+      </div>
+      <div class="how-line">
+        <span class="hn">03</span>
+        <div>
+          <div class="htitle">One shared card, when it counts</div>
+          <div class="hsub">When a debate stalls, everyone sees the same grounded card — options and evidence.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DIFFERENTIATOR ============ -->
+  <section class="band wrap" id="why-falcon">
+    <div class="sec-head">
+      <div class="eyebrow caption-upper">Why Falcon is different</div>
+      <h2 class="display-lg">Everyone else builds a personal assistant.<br>Falcon builds one for the whole room.</h2>
+      <p class="diff-sub">Note-takers summarise what one person heard, after the meeting's over. Falcon pairs everyone's context into a shared session — so it can surface what the room is missing, while the decision is still open.</p>
+    </div>
+    <div class="compare">
+      <div class="compare-card them">
+        <h4>The usual note-takers</h4>
+        <div class="compare-line"><span class="compare-mark">—</span><span>One person's transcript, one summary</span></div>
+        <div class="compare-line"><span class="compare-mark">—</span><span>Delivered after the meeting ends</span></div>
+        <div class="compare-line"><span class="compare-mark">—</span><span>Knows only what was said out loud</span></div>
+      </div>
+      <div class="compare-card us">
+        <h4>Falcon</h4>
+        <div class="compare-line"><span class="compare-mark">→</span><span>Every person's context, one shared session</span></div>
+        <div class="compare-line"><span class="compare-mark">→</span><span>Surfaces the gap live, mid-decision</span></div>
+        <div class="compare-line"><span class="compare-mark">→</span><span>Reads everything the team actually shipped</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section class="band band-soft" id="pricing">
+    <div class="wrap">
+      <div class="price-head">
+        <div class="eyebrow caption-upper">Pricing</div>
+        <h2 class="display-lg">Simple pricing, once we launch.</h2>
+      </div>
+      <p class="price-note">Falcon is in private beta. Pilot teams get in free — pricing below is what it'll be at launch.</p>
+
+      <div class="tiers">
+
+        <div class="tier">
+          <div class="tname">Solo</div>
+          <div class="tprice">Free</div>
+          <div class="tdesc">For one person. Private nudges, no coordination — useful on your own.</div>
+          <div class="tcta"><a class="btn btn-outline" href="#waitlist">Join waitlist</a></div>
+          <ul class="tfeat">
+            <li><span class="tk">✓</span> Your own AI agent</li>
+            <li><span class="tk">✓</span> GitHub &amp; tracker context</li>
+            <li><span class="tk">✓</span> Private nudges only</li>
+            <li><span class="tk">✓</span> 1 workspace</li>
+          </ul>
+        </div>
+
+        <div class="tier featured">
+          <span class="tbadge">Most teams</span>
+          <div class="tname">Team</div>
+          <div class="tprice">$35<span class="per"> / user / month</span></div>
+          <div class="tdesc">The full product. Paired sessions, mediation cards, decision records.</div>
+          <div class="tcta"><a class="btn btn-oncolor" href="#waitlist">Join waitlist</a></div>
+          <ul class="tfeat">
+            <li><span class="tk">✓</span> Everything in Solo</li>
+            <li><span class="tk">✓</span> Paired sessions &amp; mediation</li>
+            <li><span class="tk">✓</span> Shared decision records</li>
+            <li><span class="tk">✓</span> Org Decision Index</li>
+            <li><span class="tk">✓</span> Slack &amp; Notion export</li>
+          </ul>
+        </div>
+
+        <div class="tier">
+          <div class="tname">Enterprise</div>
+          <div class="tprice">Custom</div>
+          <div class="tdesc">For orgs that need the no-install path, SSO, and controls.</div>
+          <div class="tcta"><a class="btn btn-outline" href="mailto:hello@falcon.ai?subject=Falcon%20%E2%80%94%20enterprise">Contact us</a></div>
+          <ul class="tfeat">
+            <li><span class="tk">✓</span> Everything in Team</li>
+            <li><span class="tk">✓</span> Zoom no-install path</li>
+            <li><span class="tk">✓</span> SSO &amp; SCIM</li>
+            <li><span class="tk">✓</span> Retention controls &amp; SOC2</li>
+            <li><span class="tk">✓</span> Priority support</li>
+          </ul>
+        </div>
+
+        <div class="tier">
+          <div class="tname">Pilot</div>
+          <div class="tprice">$0</div>
+          <div class="tdesc">Free during the beta. Shape the product and lock in founding pricing.</div>
+          <div class="tcta"><a class="btn btn-primary" href="#waitlist">Apply now</a></div>
+          <ul class="tfeat">
+            <li><span class="tk">✓</span> Full Team features, free</li>
+            <li><span class="tk">✓</span> Direct line to the founder</li>
+            <li><span class="tk">✓</span> Founding-team pricing for good</li>
+            <li><span class="tk">✓</span> First in line at launch</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FOUNDER STORY ============ -->
+  <section class="band band-soft" id="story">
+    <div class="wrap founder">
+      <div class="flabel caption-upper">Why we're building Falcon</div>
+      <blockquote>
+        <p>“The person who knew the answer was always in the room. They just couldn't recall it fast enough. I watched good decisions get made on incomplete information, meeting after meeting — so I built the teammate I wished we'd had.”</p>
+      </blockquote>
+      <div class="attr">
+        <span class="name">Guru Wangchuk</span>
+        <span class="adot"></span>
+        <span class="role">Founder, building in Bhutan</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ BUILD LOG / UPDATES ============ -->
+  <section class="band wrap" id="updates">
+    <div class="log-head">
+      <div class="eyebrow caption-upper">Building in public</div>
+      <h2 class="display-lg">Watch Falcon get built, in real time.</h2>
+    </div>
+    <div class="log-tabs-wrap">
+      <div class="log-tabs" role="tablist">
+        <button class="log-tab active" role="tab">Milestones</button>
+        <button class="log-tab" role="tab">Behind the build</button>
+      </div>
+    </div>
+
+    <div class="mosaic">
+      <!-- left column -->
+      <div class="mcol left">
+        <a class="tile tile-grain grad-brass" href="#waitlist">
+          <div class="tile-img">
+            <span class="tile-cap ttag">◆ Architecture</span>
+            <div class="tile-cap">
+              <div class="ttitle">The pivot: from a Zoom plugin to a paired desktop app — exact speaker attribution, no marketplace review.</div>
+              <div class="tdate">Draft 2 · Aug 2026</div>
+            </div>
+          </div>
+        </a>
+        <a class="tile tile-grain grad-forest" href="#waitlist">
+          <div class="tile-img">
+            <span class="tile-cap ttag">◆ Validation</span>
+            <div class="tile-cap">
+              <div class="ttitle">Phase 0: 10 real meetings, hand-written cards. The thesis has to survive contact first.</div>
+              <div class="tdate">In progress</div>
+            </div>
+          </div>
+        </a>
+      </div>
+
+      <!-- middle column (tall feature tile) -->
+      <div class="mcol mid">
+        <a class="tile tile-tall tile-grain grad-ink" href="#waitlist">
+          <div class="tile-img">
+            <span class="tile-cap ttag">★ Latest</span>
+            <div class="tile-cap">
+              <div class="ttitle">Falcon's full product spec is written — 900+ lines, architect-reviewed, nine gaps closed before a line of code.</div>
+              <div class="tdate">PRD v2.1 · shipping the plan in public</div>
+            </div>
+          </div>
+        </a>
+      </div>
+
+      <!-- right column (offset down, like the inspo) -->
+      <div class="mcol right">
+        <a class="tile tile-grain grad-blue" href="#waitlist">
+          <div class="tile-img">
+            <span class="tile-cap ttag">◆ Design</span>
+            <div class="tile-cap">
+              <div class="ttitle">Designing the panel: private nudges vs shared cards, built to be read in three seconds mid-meeting.</div>
+              <div class="tdate">This week</div>
+            </div>
+          </div>
+        </a>
+        <a class="tile tile-grain grad-ink" href="#waitlist">
+          <div class="tile-img">
+            <span class="tile-cap ttag">◆ From Bhutan</span>
+            <div class="tile-cap">
+              <div class="ttitle">Why a meeting-intelligence startup is being built out of Thimphu — and shipped to the world.</div>
+              <div class="tdate">Founder log</div>
+            </div>
+          </div>
+        </a>
+      </div>
+    </div>
+
+    <div class="log-more">
+      <a class="btn btn-outline" href="#waitlist">Follow the build →</a>
+    </div>
+  </section>
+
+  <!-- ============ WAITLIST ============ -->
+  <section class="band" id="waitlist" style="background:var(--canvas);border-top:1px solid var(--hairline);">
+    <div class="wrap waitlist">
+      <div class="eyebrow caption-upper" style="color:var(--muted);margin-bottom:16px;">Private beta</div>
+      <h2 class="display-lg">Be first in the room.</h2>
+      <p class="sub">Pilot teams get Falcon free during the beta, shape what we build, and lock in founding-team pricing for good. Engineering teams that meet regularly go first.</p>
+
+      <form id="waitlist-form" novalidate>
+        <div class="form-row">
+          <input id="email" class="text-input" type="email" inputmode="email" autocomplete="email" placeholder="you@company.com" aria-label="Email address" required>
+          <button class="btn btn-primary" type="submit" id="submit-btn">Join waitlist</button>
+        </div>
+        <div class="form-msg" id="form-msg" role="status" aria-live="polite"></div>
+        <p class="form-fine">No spam. One email when your spot opens, and nothing else.</p>
+      </form>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-top">
+      <a class="brand" href="#top">
+        <svg class="brand-mark" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M2 21 C 9 8, 15 5, 16 17 C 17 5, 23 8, 30 21" stroke="#0c0a09" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Falcon
+      </a>
+    </div>
+    <div class="footer-cols">
+      <div class="footer-brandcol">
+        <div class="title-md" style="font-family:'Instrument Sans';color:var(--ink);">An AI teammate for every meeting.</div>
+        <p class="body-md">Text-only meeting intelligence for engineering teams. Reads the work, surfaces the gap, records the decision.</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#how">How it works</a></li>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#why-falcon">Why Falcon</a></li>
+          <li><a href="#waitlist">Waitlist</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <ul>
+          <li><a href="#why">The problem</a></li>
+          <li><a href="#story">Our story</a></li>
+          <li><a href="#waitlist">Pilot program</a></li>
+          <li><a href="mailto:hello@falcon.ai?subject=Falcon%20%E2%80%94%20hello">Contact</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Trust</h4>
+        <ul>
+          <li><a href="#how">How capture works</a></li>
+          <li><a href="mailto:hello@falcon.ai?subject=Falcon%20%E2%80%94%20privacy%20question">Privacy</a></li>
+          <li><a href="mailto:hello@falcon.ai?subject=Falcon%20%E2%80%94%20security%20question">Security</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <span>© 2026 Falcon. All rights reserved.</span>
+      <span>Built in Bhutan · forming pilot teams now.</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   WAITLIST — Supabase insert
+   ------------------------------------------------------------
+   TO GO LIVE, do two things:
+   1. In Supabase, create a table:
+        create table waitlist (
+          id uuid default gen_random_uuid() primary key,
+          email text unique not null,
+          created_at timestamptz default now()
+        );
+      Then enable Row Level Security and add an insert-only policy:
+        create policy "anon can join waitlist"
+          on waitlist for insert to anon with check (true);
+   2. Paste your project URL and anon (public) key below.
+   The anon key is safe to expose in client code — RLS above limits
+   it to inserts only. Until you fill these in, the form runs in
+   DEMO MODE: it validates and shows success without saving.
+   ============================================================ */
+const SUPABASE_URL  = "";   // e.g. "https://xxxx.supabase.co"
+const SUPABASE_KEY  = "";   // your anon/public key
+
+const form   = document.getElementById('waitlist-form');
+const email  = document.getElementById('email');
+const msg    = document.getElementById('form-msg');
+const btn    = document.getElementById('submit-btn');
+
+function isValidEmail(v){
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+function setMsg(text, kind){
+  msg.textContent = text;
+  msg.className = 'form-msg' + (kind ? ' ' + kind : '');
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const value = email.value.trim();
+  email.classList.remove('invalid');
+  setMsg('', '');
+
+  if (!isValidEmail(value)){
+    email.classList.add('invalid');
+    setMsg('Enter a valid email so we can reach you.', 'err');
+    email.focus();
+    return;
+  }
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Joining…';
+
+  // DEMO MODE — no backend configured yet
+  if (!SUPABASE_URL || !SUPABASE_KEY){
+    await new Promise(r => setTimeout(r, 600));
+    form.reset();
+    setMsg("You're on the list. (Demo mode — connect Supabase to save real signups.)", 'ok');
+    btn.disabled = false; btn.textContent = original;
+    return;
+  }
+
+  // LIVE MODE — insert into Supabase
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/waitlist`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'apikey':SUPABASE_KEY,
+        'Authorization':`Bearer ${SUPABASE_KEY}`,
+        'Prefer':'return-minimal'
+      },
+      body:JSON.stringify({ email:value })
+    });
+
+    if (res.status === 201){
+      form.reset();
+      setMsg("You're on the list. We'll be in touch as spots open.", 'ok');
+    } else if (res.status === 409){
+      setMsg("You're already on the list — we've got you.", 'ok');
+    } else {
+      const detail = await res.text();
+      console.error('Waitlist insert failed:', res.status, detail);
+      setMsg("Something went wrong on our end. Try again in a moment.", 'err');
+    }
+  } catch(err){
+    console.error(err);
+    setMsg("Couldn't reach the server. Check your connection and try again.", 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
+});
+</script>
+
+</body>
+</html>
+```

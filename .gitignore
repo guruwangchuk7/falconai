@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+.yarn/
+
+# Next.js / build output (when the app is scaffolded)
+.next/
+out/
+dist/
+build/
+
+# Tauri / Rust (desktop app, when scaffolded)
+target/
+src-tauri/target/
+
+# Environment & secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+
+# Agent folders may hold credentials/tokens (Spec Kit security note)
+.claude/settings.local.json
+
+# Graphify working data — keep the repo light; regenerate with /graphify
+graphify-out/raw/
+graphify-out/*.tmp
+
+# Logs & OS cruft
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
