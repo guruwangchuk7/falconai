@@ -25,11 +25,14 @@ integration tests, and any live API/DB call. Run via `HANDOFF.md` on a Docker+cr
   T036 Linear/Jira adapters; T037 Linear connect (OAuth2) + callback + `POST /api/webhooks/linear`
   (HMAC-verified) + Jira connect (API-token form + verify) + Connect UI; T038–T039 decision schema
   + search + page/API.
-- **PARTIAL:** T014 observability (Langfuse wired in llm; Sentry/PostHog not); T046 security
-  (HMAC webhooks + RLS pooling done; rate limits not).
-- **NOT DONE:** T005 CI skeleton; T018–T019 (retrieval-provenance + github-sync integration
-  tests); T040 decision-index seeding; T041 evals recall@k; T042 CI gates; T043 Playwright;
-  T044 quickstart execution; T045 doc refresh.
+- **PARTIAL:** T014 observability (Langfuse wired in llm; Sentry/PostHog not); T042 CI gates
+  (`.github/workflows/ci.yml` runs typecheck + the Testcontainers isolation/ACL/partition-prune
+  suite + a no-token-in-DB static gate; enabling branch protection to *require* them is a GitHub
+  setting Guru flips); T046 security (HMAC webhooks + RLS pooling done; rate limits not).
+- **DONE (added post-build):** T005 CI skeleton (GitHub Actions).
+- **NOT DONE:** T018–T019 (retrieval-provenance + github-sync integration tests); T040
+  decision-index seeding; T041 evals recall@k; T043 Playwright; T044 quickstart execution;
+  T045 doc refresh (README done in the devex pass; architecture note pending).
 
 ## Format: `[ID] [P?] [Story] Description with file path`
 

@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main, '001-context-layer']
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Enable corepack (pnpm from packageManager pin)
+        run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck all packages + tests
+        run: |
+          pnpm -r typecheck
+          pnpm typecheck:tests
+
+  integration:
+    # The isolation / ACL / partition-prune / pooling guards (SC-003, blocker-class) run against a
+    # real pgvector Postgres via Testcontainers. ubuntu-latest ships Docker, so this actually
+    # executes the RLS + partition-prune assertions on every push — no local Docker needed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Integration guards (Testcontainers pgvector)
+        run: pnpm test:integration
+
+  no-token-in-db:
+    # T042 gate: OAuth tokens live in the dedicated secrets store, NEVER the app DB (R26). Fail the
+    # build if any app-DB column looks like a raw token holder (secret_ref is the only allowed link).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert no token columns in the schema or migration
+        run: |
+          if grep -RniE "(access_token|refresh_token|api_token|oauth_token|'.*token'.*text)" \
+               packages/db/src/schema.ts packages/db/drizzle/*.sql; then
+            echo "::error::Found a token-like column in the app DB. Tokens belong in the secrets store (R26)."
+            exit 1
+          fi
+          echo "OK: no token columns in the app DB (secret_ref only)."
