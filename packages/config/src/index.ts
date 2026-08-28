@@ -38,6 +38,7 @@ export const githubEnv = z.object({
   GITHUB_APP_ID: nonEmpty,
   GITHUB_APP_PRIVATE_KEY: nonEmpty,
   GITHUB_WEBHOOK_SECRET: nonEmpty,
+  GITHUB_APP_SLUG: z.string().optional(), // for the install redirect (connect flow)
 });
 
 export const linearEnv = z.object({
