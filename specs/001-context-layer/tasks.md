@@ -21,7 +21,7 @@ written before their implementation.
 
 ## Phase 1: Setup (shared infrastructure)
 
-- [ ] T001 Scaffold the pnpm-workspaces + Turborepo monorepo (`apps/web`, `apps/worker`, `packages/{db,core,integrations,llm,secrets,evals,config}`) with root `pnpm-workspace.yaml`, `turbo.json`, strict `tsconfig.base.json`
+- [X] T001 Scaffold the pnpm-workspaces + Turborepo monorepo (`apps/web`, `apps/worker`, `packages/{db,core,integrations,llm,secrets,evals,config}`) with root `pnpm-workspace.yaml`, `turbo.json`, strict `tsconfig.base.json`
 - [ ] T002 [P] Initialize `apps/web` as Next.js 15 (App Router, TypeScript strict, Tailwind, shadcn/ui + Radix); wire the Quiet Voltage tokens from `design.md` into `globals.css`
 - [ ] T003 [P] Initialize `apps/worker` as a Node 24 TypeScript service (BullMQ entrypoint, graceful shutdown)
 - [ ] T004 [P] Configure ESLint + Prettier + Vitest at root; add `packages/config` with a zod-validated env schema (fail fast on missing/blank secrets)
@@ -33,9 +33,9 @@ written before their implementation.
 
 **⚠️ CRITICAL: the isolation spine lives here.**
 
-- [ ] T006 `packages/db`: Drizzle + Supabase **transaction-mode** pooler connection; a `withTenant(workspaceId, fn)` helper that opens a txn, runs `set local app.workspace_id`, and asserts it (the ONLY path to tenant data)
-- [ ] T007 `packages/db`: schema for `workspace`, `user`, `membership` (foundational entities per data-model.md) + Drizzle migrations
-- [ ] T008 `packages/db`: enable + FORCE RLS on every tenant table; create the app DB role with **no `BYPASSRLS`**, not table owner; policies `using (workspace_id = current_setting('app.workspace_id')::uuid)`
+- [X] T006 `packages/db`: Drizzle + Supabase **transaction-mode** pooler connection; a `withTenant(workspaceId, fn)` helper that opens a txn, runs `set local app.workspace_id`, and asserts it (the ONLY path to tenant data)
+- [X] T007 `packages/db`: schema for `workspace`, `user`, `membership` (foundational entities per data-model.md) + Drizzle migrations
+- [X] T008 `packages/db`: enable + FORCE RLS on every tenant table; create the app DB role with **no `BYPASSRLS`**, not table owner; policies `using (workspace_id = current_setting('app.workspace_id')::uuid)`
 - [ ] T009 [P] Integration test harness: Testcontainers Postgres with `pgvector` ≥ 0.8; helper to seed workspaces/users/repos (real DB, never mocked)
 - [ ] T010 `apps/web`: Auth.js (sign up, session) + resolve active `membership` → the workspace context every request uses
 - [ ] T011 [P] `packages/secrets`: `SecretStore` interface + dedicated-store client (Infisical/cloud SM per research D3) with per-tenant envelope encryption; `put/get/rotate/revoke`; app DB stores only `secret_ref` (R26)
