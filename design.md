@@ -148,7 +148,7 @@ building in Bhutan").
 
 ## Part 2 — Reference HTML (verbatim)
 
-The complete original landing page follows, unchanged. This is the artifact to preserve.
+**`design/landing.html` is the single source of truth for the landing page.** The block below is a read-only reference snapshot and may lag the live file — it already did (the waitlist fallback, the version tile, and the social-proof / capture copy were corrected in `design/landing.html` on 2026-08-28). Re-platform to Next.js from `design/landing.html`, not from this copy, and do not hand-sync the two.
 
 ```html
 <!DOCTYPE html>
@@ -631,7 +631,7 @@ a{ color:inherit; text-decoration:none; }
         <span class="hn">01</span>
         <div>
           <div class="htitle">A quiet app on each laptop</div>
-          <div class="hsub">Under 15MB. Nothing joins your call — it hears only your mic, never the room.</div>
+          <div class="hsub">Under 15MB. Nothing joins your call — it captures your microphone, not your system audio.</div>
         </div>
       </div>
       <div class="how-line">

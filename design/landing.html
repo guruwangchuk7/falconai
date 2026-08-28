@@ -405,21 +405,21 @@ a{ color:inherit; text-decoration:none; }
   <!-- ============ SOCIAL PROOF ============ -->
   <div class="proof">
     <div class="wrap">
-      <div class="proof-label caption-upper">Join engineers already on the list</div>
+      <div class="proof-label caption-upper">What makes Falcon different</div>
       <div class="proof-row">
         <div class="proof-stat">
-          <div class="n">200+</div>
-          <div class="l">engineers waitlisted</div>
+          <div class="n">Text-only</div>
+          <div class="l">Falcon writes, never speaks in the meeting</div>
         </div>
         <div class="proof-div"></div>
         <div class="proof-stat">
-          <div class="n">12</div>
-          <div class="l">pilot teams forming</div>
+          <div class="n">By device</div>
+          <div class="l">exact speaker attribution, no voiceprints</div>
         </div>
         <div class="proof-div"></div>
         <div class="proof-stat">
-          <div class="n">Zoom · Meet · Teams</div>
-          <div class="l">works on all of them, no bot joins</div>
+          <div class="n">No bot</div>
+          <div class="l">nothing joins your meeting; Falcon runs beside the call</div>
         </div>
       </div>
     </div>
@@ -478,7 +478,7 @@ a{ color:inherit; text-decoration:none; }
         <span class="hn">01</span>
         <div>
           <div class="htitle">A quiet app on each laptop</div>
-          <div class="hsub">Under 15MB. Nothing joins your call — it hears only your mic, never the room.</div>
+          <div class="hsub">Under 15MB. Nothing joins your call — it captures your microphone, not your system audio.</div>
         </div>
       </div>
       <div class="how-line">
@@ -649,7 +649,7 @@ a{ color:inherit; text-decoration:none; }
             <span class="tile-cap ttag">★ Latest</span>
             <div class="tile-cap">
               <div class="ttitle">Falcon's full product spec is written — 900+ lines, architect-reviewed, nine gaps closed before a line of code.</div>
-              <div class="tdate">PRD v2.1 · shipping the plan in public</div>
+              <div class="tdate">PRD v2.7 · shipping the plan in public</div>
             </div>
           </div>
         </a>
@@ -787,6 +787,16 @@ function setMsg(text, kind){
   msg.textContent = text;
   msg.className = 'form-msg' + (kind ? ' ' + kind : '');
 }
+// Degraded-but-honest fallback (R12 / CX-2): never fake success. On no-backend or a
+// failed insert, convert through email instead of losing the signup. The email is
+// encodeURIComponent'd into the href; the visible link text carries no user input.
+function setMailtoFallback(value){
+  const href = 'mailto:hello@falcon.ai'
+    + '?subject=' + encodeURIComponent('Add me to the Falcon waitlist')
+    + '&body='    + encodeURIComponent('Please add this email to the waitlist: ' + value);
+  msg.innerHTML = "Couldn't save that automatically. <a href=\"" + href + "\">Email us to join</a> and you're on the list.";
+  msg.className = 'form-msg err';
+}
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -805,11 +815,10 @@ form.addEventListener('submit', async (e) => {
   const original = btn.textContent;
   btn.textContent = 'Joining…';
 
-  // DEMO MODE — no backend configured yet
+  // NO BACKEND CONFIGURED — never fake success; degrade to email (R12 / CX-2: fail useful, not silent)
   if (!SUPABASE_URL || !SUPABASE_KEY){
-    await new Promise(r => setTimeout(r, 600));
-    form.reset();
-    setMsg("You're on the list. (Demo mode — connect Supabase to save real signups.)", 'ok');
+    console.error('Waitlist backend not configured (SUPABASE_URL/KEY empty) — showing email fallback.');
+    setMailtoFallback(value);
     btn.disabled = false; btn.textContent = original;
     return;
   }
@@ -835,11 +844,11 @@ form.addEventListener('submit', async (e) => {
     } else {
       const detail = await res.text();
       console.error('Waitlist insert failed:', res.status, detail);
-      setMsg("Something went wrong on our end. Try again in a moment.", 'err');
+      setMailtoFallback(value);
     }
   } catch(err){
     console.error(err);
-    setMsg("Couldn't reach the server. Check your connection and try again.", 'err');
+    setMailtoFallback(value);
   } finally {
     btn.disabled = false; btn.textContent = original;
   }
