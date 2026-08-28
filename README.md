@@ -16,6 +16,7 @@ monorepo under `packages/` + `apps/`, typecheck-clean but not yet run end-to-end
 | Path | What it is |
 |---|---|
 | [`START-HERE.md`](./START-HERE.md) | **Read first** — the ordered "what to do next" list (security, waitlist, running the build). |
+| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Code orientation — the monorepo map, tenant-isolation spine, and connect→retrieve data flow. |
 | [`PRD.md`](./PRD.md) | **Product source of truth** — Falcon PRD (v2.7). |
 | [`design.md`](./design.md) | **Design source of truth** — the landing-page HTML + "Quiet Voltage" design-system notes to preserve when re-platforming to Next.js. |
 | [`design/landing.html`](./design/landing.html) | Standalone, openable copy of the landing page (waitlist wired to Supabase). |

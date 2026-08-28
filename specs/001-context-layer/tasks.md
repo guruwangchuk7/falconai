@@ -29,10 +29,11 @@ integration tests, and any live API/DB call. Run via `HANDOFF.md` on a Docker+cr
   (`.github/workflows/ci.yml` runs typecheck + the Testcontainers isolation/ACL/partition-prune
   suite + a no-token-in-DB static gate; enabling branch protection to *require* them is a GitHub
   setting Guru flips); T046 security (HMAC webhooks + RLS pooling done; rate limits not).
-- **DONE (added post-build):** T005 CI skeleton (GitHub Actions).
+- **DONE (added post-build):** T005 CI skeleton (GitHub Actions); T041 evals recall@k harness
+  (`packages/evals` — pure ranking/recall verified here; live bake-off runs with `VOYAGE_API_KEY`);
+  T045 doc refresh (README + `ARCHITECTURE.md`).
 - **NOT DONE:** T018–T019 (retrieval-provenance + github-sync integration tests); T040
-  decision-index seeding; T041 evals recall@k; T043 Playwright; T044 quickstart execution;
-  T045 doc refresh (README done in the devex pass; architecture note pending).
+  decision-index seeding; T043 Playwright; T044 quickstart execution.
 
 ## Format: `[ID] [P?] [Story] Description with file path`
 
