@@ -42,9 +42,15 @@ export async function indexArtifact(tx: TenantTx, workspaceId: string, artifactI
   const arts = await tx.select().from(schema.artifact).where(eq(schema.artifact.id, artifactId)).limit(1);
   const a = arts[0];
   if (!a) return;
-  const chunks = chunkArtifact({ title: a.title, body: a.body, trustTier: a.trustTier as TrustTier });
-  const vectors = await embeddings.embed(chunks.map((c) => c.content), 'document');
+  // Never embed empty content — Voyage rejects empty strings, which would fail the job forever.
+  const chunks = chunkArtifact({ title: a.title, body: a.body, trustTier: a.trustTier as TrustTier })
+    .filter((c) => c.content.trim().length > 0);
   await tx.delete(schema.artifactChunk).where(eq(schema.artifactChunk.artifactId, artifactId));
+  if (chunks.length === 0) return; // nothing indexable
+  const vectors = await embeddings.embed(chunks.map((c) => c.content), 'document');
+  if (vectors.length !== chunks.length) {
+    throw new Error(`embedding count mismatch: got ${vectors.length} for ${chunks.length} chunks`);
+  }
   await tx.insert(schema.artifactChunk).values(
     chunks.map((c, i) => ({
       workspaceId, artifactId, chunkIndex: i, content: c.content, trustTier: c.trustTier,

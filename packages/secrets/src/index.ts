@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { loadEnv, secretsEnv } from '@falcon/config';
 
@@ -91,7 +91,11 @@ export class FileSecretStore implements SecretStore {
   }
   private async save(all: Record<string, Envelope>): Promise<void> {
     await mkdir(dirname(this.path), { recursive: true });
-    await writeFile(this.path, JSON.stringify(all), { mode: 0o600 });
+    // Atomic write: temp file + rename, so a crash mid-write can't corrupt the store.
+    // (Dev backend — cross-process write races are still possible; prod uses a real SM.)
+    const tmp = `${this.path}.tmp`;
+    await writeFile(tmp, JSON.stringify(all), { mode: 0o600 });
+    await rename(tmp, this.path);
   }
 
   async put(ref: SecretRefInput, token: OAuthToken): Promise<string> {

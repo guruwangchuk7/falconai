@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { schema, type TenantTx } from '@falcon/db';
 import { EMBEDDING_MODEL } from '@falcon/llm';
 import type { CoreDeps } from './deps.js';
@@ -54,12 +54,13 @@ export async function retrieve(deps: CoreDeps, input: RetrieveInput): Promise<Re
     const vecStr = `[${qvec!.join(',')}]`;
     const dist = sql<number>`${schema.artifactChunk.embedding} <=> ${vecStr}::vector`;
 
-    const conds = [
-      eq(schema.artifactChunk.embeddingModel, EMBEDDING_MODEL),
-      sql`${schema.artifact.aclTags} ?| ${accessible}::text[]`,
-    ];
+    // ACL: artifact is visible if any of its acl_tags is in the requester's accessible set.
+    // Use jsonb @> containment (proven in acl.test) OR'd per tag — avoids a raw text[] param cast.
+    const aclCond = or(...accessible.map((tag) => sql`${schema.artifact.aclTags} @> ${JSON.stringify([tag])}::jsonb`));
+    const conds = [eq(schema.artifactChunk.embeddingModel, EMBEDDING_MODEL)];
+    if (aclCond) conds.push(aclCond);
     if (input.sources && input.sources.length > 0) {
-      conds.push(sql`${schema.artifact.source} = any(${input.sources}::text[])`);
+      conds.push(inArray(schema.artifact.source, input.sources));
     }
 
     const rows = await tx
