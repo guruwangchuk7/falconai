@@ -28,6 +28,12 @@ it('EXPLAIN ANALYZE prunes partitions for a tenant-scoped scan', async () => {
     )) as unknown as Array<Record<string, string>>;
     return rows.map((r) => Object.values(r)[0]).join('\n');
   });
-  // 16 hash partitions; the runtime prune shows "Partitions removed" and/or "(never executed)".
-  expect(plan).toMatch(/Partitions removed|never executed/i);
+  // The tenant id comes from current_setting('app.workspace_id'), which is opaque to the planner,
+  // so pruning happens at RUN TIME: Postgres builds an Append over all 16 hash partitions and drops
+  // the non-matching ones ("Subplans Removed: N"). Static/plan-time pruning would instead print
+  // "Partitions removed". Accept either — the correctness bar is that pruning occurred AND the scan
+  // touches exactly ONE partition (not a post-filter over all 16).
+  expect(plan).toMatch(/Subplans Removed: \d+|Partitions removed/i);
+  const scanned = new Set(plan.match(/artifact_p\d+/g) ?? []);
+  expect(scanned.size).toBe(1);
 });
