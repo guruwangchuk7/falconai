@@ -11,6 +11,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@falcon/db': fileURLToPath(new URL('./packages/db/src/index.ts', import.meta.url)),
+      '@falcon/core': fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url)),
+      '@falcon/llm': fileURLToPath(new URL('./packages/llm/src/index.ts', import.meta.url)),
+      '@falcon/config': fileURLToPath(new URL('./packages/config/src/index.ts', import.meta.url)),
+      '@falcon/integrations': fileURLToPath(new URL('./packages/integrations/src/index.ts', import.meta.url)),
     },
   },
 });

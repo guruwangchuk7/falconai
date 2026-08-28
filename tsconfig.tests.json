@@ -5,7 +5,11 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@falcon/db": ["./packages/db/src/index.ts"]
+      "@falcon/db": ["./packages/db/src/index.ts"],
+      "@falcon/core": ["./packages/core/src/index.ts"],
+      "@falcon/llm": ["./packages/llm/src/index.ts"],
+      "@falcon/config": ["./packages/config/src/index.ts"],
+      "@falcon/integrations": ["./packages/integrations/src/index.ts"]
     }
   },
   "include": ["tests"]

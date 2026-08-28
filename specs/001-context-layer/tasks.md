@@ -36,9 +36,11 @@ integration tests, and any live API/DB call. Run via `HANDOFF.md` on a Docker+cr
   dev `seed` script (`packages/db` — workspace/users/connection/artifacts + lifecycle decision
   records, embedded when `VOYAGE_API_KEY` set); T041 evals recall@k harness (`packages/evals` —
   pure ranking/recall verified here; live bake-off runs with `VOYAGE_API_KEY`); T045 doc refresh
-  (README + `ARCHITECTURE.md`).
-- **NOT DONE:** T018–T019 (retrieval-provenance + github-sync integration tests); T043 Playwright;
-  T044 quickstart execution.
+  (README + `ARCHITECTURE.md`); T018/T019 integration tests (retrieval contract — provenance/ACL/
+  no-fabrication SC-004; sync→index→retrievable + relevance + idempotency SC-001/002 data path) —
+  offline deterministic embeddings, run in CI, no API keys.
+- **NOT DONE:** T043 Playwright smoke (needs a running app); T044 quickstart end-to-end (live
+  connect→sync→retrieve on your machine + creds).
 
 ## Format: `[ID] [P?] [Story] Description with file path`
 
