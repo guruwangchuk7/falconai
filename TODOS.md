@@ -34,6 +34,11 @@ owner-decisions and pre-build actions, not implementation tasks (repo is at the 
   operator only chooses when to send; measure behavior (course change, talk-time drop) + async
   asymmetric follow-up + revealed preference; vary the power gradient (include a manager-in-room
   session); test asymmetric vs symmetric/face-saving card shapes.
+  - [x] Card mockups drafted: `design/woz-cards.html` (both shapes, panel-width, Quiet Voltage
+    tokens, Appendix A content). Ready to show in the test; wire to real model output when Phase 1
+    retrieval works.
+- [x] **Panel a11y/always-on-top constraints** added to PRD §9.3 (polite live-region card
+  announce; grayscale-safe private/shared distinction; reduced-motion; opaque surface + 44px targets).
 - [ ] **AD-1 bake-off in Phase 3 planning** (OV-13): server-arrival vs clock-reconstruction on
   Phase 0 recordings, judged on card quality from the merged transcript (not timestamp
   accuracy), with at least one mixed-network (VPN/hotel-wifi) recording. Hold F5/§15 detailed

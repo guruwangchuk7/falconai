@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Falcon — WoZ mediation cards (asymmetric vs symmetric)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Quiet Voltage tokens (from design.md Part 1) */
+:root{
+  --canvas:#f5f5f5; --surface-card:#ffffff; --surface-strong:#f0efed;
+  --ink:#0c0a09; --primary:#292524; --body:#4e4e4e; --muted:#777169; --muted-soft:#a8a29e;
+  --brass-deep:#8f5e12; --forest:#3f6b52;
+  --hairline:#e7e5e4; --hairline-strong:#d6d3d1;
+  --font-display:'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-body:'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+*{ box-sizing:border-box; margin:0; padding:0; }
+body{
+  background:var(--canvas); color:var(--body);
+  font-family:var(--font-body); line-height:1.5;
+  padding:40px 24px; -webkit-font-smoothing:antialiased;
+}
+.page-head{ max-width:840px; margin:0 auto 32px; text-align:center; }
+.page-head h1{ font-family:var(--font-display); font-weight:500; font-size:24px; color:var(--ink); margin-bottom:8px; }
+.page-head p{ font-size:15px; color:var(--muted); max-width:60ch; margin:0 auto; }
+.board{ display:flex; gap:40px; justify-content:center; flex-wrap:wrap; align-items:flex-start; }
+.col{ width:380px; } /* panel width, PRD §9.1 (~380×600) */
+.col > .label{
+  font-family:var(--font-body); font-size:12px; font-weight:600; text-transform:uppercase;
+  letter-spacing:0.96px; color:var(--muted); margin-bottom:6px;
+}
+.col > .note{ font-size:13px; color:var(--muted); margin-bottom:14px; min-height:34px; }
+
+/* ---------- the card (mirrors PRD §9.2 SHARED card) ---------- */
+.card{
+  background:var(--surface-card); border:1px solid var(--hairline);
+  border-radius:14px; padding:18px 18px 14px; box-shadow:0 1px 2px rgba(12,10,9,.04);
+}
+.card .shared{
+  display:flex; align-items:center; gap:7px;
+  font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.9px;
+  color:var(--muted); margin-bottom:12px;
+}
+.card .shared .dot{ width:7px; height:7px; border-radius:50%; background:var(--brass-deep); }
+.card h2{
+  font-family:var(--font-display); font-weight:500; font-size:19px; color:var(--ink);
+  line-height:1.2; margin-bottom:3px;
+}
+.card .meta{ font-size:12.5px; color:var(--muted); margin-bottom:14px; }
+.card .lead{ font-size:13.5px; color:var(--primary); margin-bottom:12px; }
+.card .lead strong{ color:var(--ink); font-weight:600; }
+.card ul{ list-style:none; margin:0 0 14px; }
+.card li{
+  font-size:13.5px; color:var(--body); padding:7px 0; border-top:1px solid var(--hairline);
+  display:flex; gap:8px;
+}
+.card li:first-child{ border-top:none; }
+.card li .tick{ color:var(--brass-deep); flex:none; }
+.card .k{ color:var(--ink); font-weight:500; }
+.chip{
+  display:inline-flex; align-items:center; gap:4px;
+  font-family:var(--font-body); font-size:12px; font-weight:500;
+  color:var(--ink); background:var(--surface-strong); border:1px solid var(--hairline-strong);
+  border-radius:6px; padding:1px 7px; text-decoration:none; white-space:nowrap;
+}
+.chip.merged::before{ content:"✓"; color:var(--forest); font-size:11px; }
+.block-label{
+  font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.8px;
+  color:var(--muted); margin:2px 0 8px;
+}
+.options{ font-size:12.5px; color:var(--body); margin-bottom:12px; }
+.options .opt{ padding:2px 0; }
+.options .opt::before{ content:"·"; color:var(--muted-soft); margin-right:6px; }
+.decide{
+  font-size:12.5px; color:var(--ink); background:var(--surface-strong);
+  border-radius:8px; padding:9px 11px; margin-bottom:12px;
+}
+.decide .who{ color:var(--brass-deep); font-weight:600; }
+.foot{
+  display:flex; align-items:center; justify-content:space-between;
+  border-top:1px solid var(--hairline); padding-top:10px;
+}
+.foot .expand{ font-size:12px; color:var(--muted); }
+.foot .rate{ display:flex; gap:10px; font-size:15px; color:var(--muted-soft); }
+@media (max-width:840px){ .board{ gap:28px; } .col{ width:100%; max-width:380px; } }
+@media (prefers-reduced-motion: reduce){ *{ transition:none !important; animation:none !important; } }
+</style>
+</head>
+<body>
+  <div class="page-head">
+    <h1>WoZ mediation card — two rhetorical shapes</h1>
+    <p>Same facts, same evidence, same options. The only variable is how the gap is framed. Show one per meeting in the Phase 1–2 Wizard-of-Oz test (OV-1) and measure which one reads as help vs. gotcha. Content from PRD Appendix A.</p>
+  </div>
+
+  <div class="board">
+
+    <!-- ============ VARIANT A — ASYMMETRIC (current PRD F9.2 framing) ============ -->
+    <div class="col">
+      <div class="label">Variant A · asymmetric</div>
+      <div class="note">Names the information gap directly — "what each side may not know." Higher signal, higher face-threat.</div>
+      <div class="card">
+        <div class="shared"><span class="dot"></span> Shared · everyone sees</div>
+        <h2>Feature A vs Feature B</h2>
+        <div class="meta">7 turns · unresolved</div>
+        <div class="lead">Shared ground: both want lower auth latency this cycle.</div>
+        <div class="block-label">What each side may not know</div>
+        <ul>
+          <li><span class="tick">›</span><span><span class="k">A is further along than stated</span> — <a class="chip merged" href="#">PR #482</a> merged 3 days ago; <a class="chip" href="#">ENG-217</a> ~3 days left</span></li>
+          <li><span class="tick">›</span><span><span class="k">B addresses a churn driver A doesn't</span> — 4 enterprise accounts, Q2</span></li>
+          <li><span class="tick">›</span><span><span class="k">B adds a vendor dependency</span> — last SOC2 review took 6 weeks <a class="chip" href="#">DR-31</a></span></li>
+        </ul>
+        <div class="options">
+          <div class="opt">ship A now, spike B next cycle</div>
+          <div class="opt">commit to B, accept +11 days</div>
+          <div class="opt">2-day timeboxed spike, decide Friday</div>
+        </div>
+        <div class="decide">Missing to decide: is the churn signal 4 accounts or 40? → <span class="who">Sarah, by Thursday</span></div>
+        <div class="foot">
+          <span class="expand">what each agent said ▾</span>
+          <span class="rate">👍 &nbsp; 👎</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ VARIANT B — SYMMETRIC / FACE-SAVING (OV-1 alternative) ============ -->
+    <div class="col">
+      <div class="label">Variant B · symmetric</div>
+      <div class="note">Externalizes the conflict onto missing shared facts, not onto who was uninformed. Same information, blame inexpressible by construction.</div>
+      <div class="card">
+        <div class="shared"><span class="dot"></span> Shared · everyone sees</div>
+        <h2>Feature A vs Feature B</h2>
+        <div class="meta">7 turns · unresolved</div>
+        <div class="lead">Both sides want the same thing this cycle: <strong>lower auth latency</strong>. The disagreement rests on three facts not yet on the table.</div>
+        <div class="block-label">Facts neither side has cited</div>
+        <ul>
+          <li><span class="tick">›</span><span><span class="k">Where A actually stands</span> — <a class="chip merged" href="#">PR #482</a> merged 3 days ago; <a class="chip" href="#">ENG-217</a> ~3 days left</span></li>
+          <li><span class="tick">›</span><span><span class="k">What B uniquely covers</span> — a churn driver A doesn't touch: 4 enterprise accounts, Q2</span></li>
+          <li><span class="tick">›</span><span><span class="k">What B costs</span> — a new vendor dependency; last SOC2 review took 6 weeks <a class="chip" href="#">DR-31</a></span></li>
+        </ul>
+        <div class="options">
+          <div class="opt">ship A now, spike B next cycle</div>
+          <div class="opt">commit to B, accept +11 days</div>
+          <div class="opt">2-day timeboxed spike, decide Friday</div>
+        </div>
+        <div class="decide">One fact would settle it: is the churn signal 4 accounts or 40? → <span class="who">Sarah, by Thursday</span></div>
+        <div class="foot">
+          <span class="expand">what each agent said ▾</span>
+          <span class="rate">👍 &nbsp; 👎</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

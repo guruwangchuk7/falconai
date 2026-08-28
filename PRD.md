@@ -515,6 +515,10 @@ ________________________________________
 -    Pairing status always visible. Ambiguity about who's in the session is a trust failure.
 -    Mic-active indicator always visible, and a distinct one when system audio is on.
 -    Pause is one tap, no dialog.
+-    A card arrival must not interrupt. The panel pushes content while someone is talking, so a new card announces through a polite live region (aria-live="polite"), never assertive — a screen-reader user hears it at the next natural pause, not mid-sentence. This is the audio equivalent of the "never steal focus" rule.
+-    The private-vs-shared distinction must survive grayscale and low vision. It cannot rest on background color alone: pair the tint with the lock icon AND an explicit text label ("Only you can see this" / "Everyone sees this"), at ≥ 4.5:1 contrast, so it reads for colorblind users and in a screenshot.
+-    Respect prefers-reduced-motion. The one-accent "Falcon has something" cue and any card entrance degrade to a static state change (no slide/pulse) under reduced-motion, matching the marketing site's rule.
+-    Always-on-top means always legible. The panel surface is opaque (not translucent over video tiles), legible over both dark and light desktops, and every control (Dismiss, Pause, expand) has a ≥ 44px touch/click target.
 
 ________________________________________
 ## 10. Web Dashboard
