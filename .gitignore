@@ -33,6 +33,11 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Monorepo / build caches
+.turbo/
+coverage/
+*.tsbuildinfo
+
 # Editor
 .vscode/
 .idea/

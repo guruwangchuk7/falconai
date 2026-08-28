@@ -12,6 +12,36 @@ and SC-004 provenance are blocker-class), and the constitution / owner preferenc
 non-negotiable. Isolation, ACL, partition-prune, provenance, and decision-lifecycle tests are
 written before their implementation.
 
+## Implementation status (2026-08-28)
+
+Built and **typecheck-clean** (`pnpm -r typecheck` + `tsc -p tsconfig.tests.json`, all green).
+**Not executed** in the authoring env (no Docker/Postgres/creds): the SQL migration, the
+integration tests, and any live API/DB call. Run via `HANDOFF.md` on a Docker+creds host.
+
+- **DONE (code + typecheck):** T001–T004 scaffold; T006–T009 db isolation spine + harness;
+  T010 Auth.js; T011 secrets; T012 llm; T013 queue/BullMQ; T015–T017 invariant tests (written);
+  T020–T029 US1 (schema, GitHub adapter, connect+callback, webhook, sync/index jobs, retrieve,
+  retrieval API, integrations page, poll); T031–T033 US2 (digest schema, job, page+API);
+  T036 Linear/Jira adapters; T037 Linear connect (OAuth2) + callback + `POST /api/webhooks/linear`
+  (HMAC-verified) + Jira connect (API-token form + verify) + Connect UI; T038–T039 decision schema
+  + search + page/API.
+- **PARTIAL:** T042 CI gates (`.github/workflows/ci.yml` runs typecheck + the Testcontainers
+  isolation/ACL/partition-prune suite + a no-token-in-DB static gate; enabling branch protection
+  to *require* them is a GitHub setting Guru flips); T046 security (HMAC webhooks + RLS pooling +
+  Redis fixed-window rate limits on webhooks/connect done; the remaining bit is confirming
+  transaction-mode pooling in each deployed env — a runtime/ops check).
+- **DONE (added post-build):** T014 observability (Sentry web+worker + PostHog web via
+  `@falcon/observability` — dependency-light, env-guarded, Langfuse already in llm);
+  T005 CI skeleton (GitHub Actions); T040 decision-index seeding +
+  dev `seed` script (`packages/db` — workspace/users/connection/artifacts + lifecycle decision
+  records, embedded when `VOYAGE_API_KEY` set); T041 evals recall@k harness (`packages/evals` —
+  pure ranking/recall verified here; live bake-off runs with `VOYAGE_API_KEY`); T045 doc refresh
+  (README + `ARCHITECTURE.md`); T018/T019 integration tests (retrieval contract — provenance/ACL/
+  no-fabrication SC-004; sync→index→retrievable + relevance + idempotency SC-001/002 data path) —
+  offline deterministic embeddings, run in CI, no API keys.
+- **NOT DONE:** T043 Playwright smoke (needs a running app); T044 quickstart end-to-end (live
+  connect→sync→retrieve on your machine + creds).
+
 ## Format: `[ID] [P?] [Story] Description with file path`
 
 - **[P]**: parallelizable (different files, no incomplete-dependency)
@@ -21,7 +51,7 @@ written before their implementation.
 
 ## Phase 1: Setup (shared infrastructure)
 
-- [ ] T001 Scaffold the pnpm-workspaces + Turborepo monorepo (`apps/web`, `apps/worker`, `packages/{db,core,integrations,llm,secrets,evals,config}`) with root `pnpm-workspace.yaml`, `turbo.json`, strict `tsconfig.base.json`
+- [X] T001 Scaffold the pnpm-workspaces + Turborepo monorepo (`apps/web`, `apps/worker`, `packages/{db,core,integrations,llm,secrets,evals,config}`) with root `pnpm-workspace.yaml`, `turbo.json`, strict `tsconfig.base.json`
 - [ ] T002 [P] Initialize `apps/web` as Next.js 15 (App Router, TypeScript strict, Tailwind, shadcn/ui + Radix); wire the Quiet Voltage tokens from `design.md` into `globals.css`
 - [ ] T003 [P] Initialize `apps/worker` as a Node 24 TypeScript service (BullMQ entrypoint, graceful shutdown)
 - [ ] T004 [P] Configure ESLint + Prettier + Vitest at root; add `packages/config` with a zod-validated env schema (fail fast on missing/blank secrets)
@@ -33,10 +63,10 @@ written before their implementation.
 
 **⚠️ CRITICAL: the isolation spine lives here.**
 
-- [ ] T006 `packages/db`: Drizzle + Supabase **transaction-mode** pooler connection; a `withTenant(workspaceId, fn)` helper that opens a txn, runs `set local app.workspace_id`, and asserts it (the ONLY path to tenant data)
-- [ ] T007 `packages/db`: schema for `workspace`, `user`, `membership` (foundational entities per data-model.md) + Drizzle migrations
-- [ ] T008 `packages/db`: enable + FORCE RLS on every tenant table; create the app DB role with **no `BYPASSRLS`**, not table owner; policies `using (workspace_id = current_setting('app.workspace_id')::uuid)`
-- [ ] T009 [P] Integration test harness: Testcontainers Postgres with `pgvector` ≥ 0.8; helper to seed workspaces/users/repos (real DB, never mocked)
+- [X] T006 `packages/db`: Drizzle + Supabase **transaction-mode** pooler connection; a `withTenant(workspaceId, fn)` helper that opens a txn, runs `set local app.workspace_id`, and asserts it (the ONLY path to tenant data)
+- [X] T007 `packages/db`: schema for `workspace`, `user`, `membership` (foundational entities per data-model.md) + Drizzle migrations
+- [X] T008 `packages/db`: enable + FORCE RLS on every tenant table; create the app DB role with **no `BYPASSRLS`**, not table owner; policies `using (workspace_id = current_setting('app.workspace_id')::uuid)`
+- [X] T009 [P] Integration test harness: Testcontainers Postgres with `pgvector` ≥ 0.8; helper to seed workspaces/users/repos (real DB, never mocked) — `tests/support/pg.ts` (typecheck-green; run pending a Docker host)
 - [ ] T010 `apps/web`: Auth.js (sign up, session) + resolve active `membership` → the workspace context every request uses
 - [ ] T011 [P] `packages/secrets`: `SecretStore` interface + dedicated-store client (Infisical/cloud SM per research D3) with per-tenant envelope encryption; `put/get/rotate/revoke`; app DB stores only `secret_ref` (R26)
 - [ ] T012 [P] `packages/llm`: `ChatProvider` (Claude Haiku, **pinned** version) + `EmbeddingProvider` (`voyage-code-4`, dim 1024, version recorded) + `RerankProvider` (`rerank-2.5`) behind cross-vendor interfaces; Langfuse logging on every chat call
@@ -54,9 +84,9 @@ written before their implementation.
 
 ### Tests (write first, must fail)
 
-- [ ] T015 [P] [US1] Integration test — tenant isolation: seed workspaces A & B; a query in A crafted to match B returns **zero** B items (`tests/integration/isolation.test.ts`, SC-003)
-- [ ] T016 [P] [US1] Integration test — ACL: a private-repo artifact is never returned to a non-member (`tests/integration/acl.test.ts`, SC-003)
-- [ ] T017 [P] [US1] Integration test — partition prune: `EXPLAIN (ANALYZE)` through the RLS path asserts `Partitions removed` (`tests/integration/partition-prune.test.ts`)
+- [X] T015 [P] [US1] Integration test — tenant isolation: seed workspaces A & B; a query in A crafted to match B returns **zero** B items (`tests/integration/isolation.test.ts`, SC-003) — written + typecheck-green; run pending Docker
+- [X] T016 [P] [US1] Integration test — ACL: a private-repo artifact is never returned to a non-member (`tests/integration/acl.test.ts`, SC-003) — written + typecheck-green; run pending Docker
+- [X] T017 [P] [US1] Integration test — partition prune: `EXPLAIN (ANALYZE)` through the RLS path asserts `Partitions removed` (`tests/integration/partition-prune.test.ts`) — written + typecheck-green; run pending Docker. (Plus `tests/integration/pooling.test.ts` for RLS fail-closed.)
 - [ ] T018 [P] [US1] Contract test — `retrieve()` returns only real, provenance-bearing items; no fabrication (`tests/contract/retrieval.test.ts`, SC-004)
 - [ ] T019 [P] [US1] Integration test — GitHub sync → artifact indexed → retrievable within budget (`tests/integration/sync-github.test.ts`, SC-001/002)
 

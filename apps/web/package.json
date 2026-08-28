@@ -1,0 +1,36 @@
+{
+  "name": "@falcon/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@falcon/config": "workspace:*",
+    "@falcon/core": "workspace:*",
+    "@falcon/db": "workspace:*",
+    "@falcon/integrations": "workspace:*",
+    "@falcon/llm": "workspace:*",
+    "@falcon/observability": "workspace:*",
+    "@falcon/queue": "workspace:*",
+    "@falcon/secrets": "workspace:*",
+    "drizzle-orm": "0.36.4",
+    "next": "15.1.3",
+    "next-auth": "5.0.0-beta.25",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "24",
+    "@types/react": "19.0.2",
+    "@types/react-dom": "19.0.2",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.17",
+    "typescript": "^5.6.0"
+  }
+}
