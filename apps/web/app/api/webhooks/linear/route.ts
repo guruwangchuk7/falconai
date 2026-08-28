@@ -3,13 +3,17 @@ import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { getDb, schema } from '@falcon/db';
 import { linearEnv, loadEnv } from '@falcon/config';
-import { defaultJobOpts, syncQueue } from '@falcon/queue';
+import { defaultJobOpts, rateLimit, syncQueue } from '@falcon/queue';
 
 export const runtime = 'nodejs';
 
 /** Linear webhook: verify the HMAC signature, resolve the owning connection by organizationId,
  *  and enqueue a cursored sync for near-real-time indexing (no inline DB writes on the hot path). */
 export async function POST(req: Request) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  if (!(await rateLimit(`wh:linear:${ip}`, 120, 60)).ok) {
+    return NextResponse.json({ error: 'rate limited' }, { status: 429 });
+  }
   const secret = loadEnv(linearEnv).LINEAR_WEBHOOK_SECRET;
   if (!secret) return NextResponse.json({ error: 'linear webhook not configured' }, { status: 503 });
 

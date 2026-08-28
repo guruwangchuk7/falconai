@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { githubEnv, loadEnv } from '@falcon/config';
+import { rateLimit } from '@falcon/queue';
 import { getActiveSession } from '@/lib/session';
 
 export const runtime = 'nodejs';
@@ -19,6 +20,9 @@ export const GH_STATE_COOKIE = 'gh_oauth_state';
 export async function GET(req: Request) {
   const session = await getActiveSession();
   if (!session) return NextResponse.redirect(new URL('/api/auth/signin', req.url));
+  if (!(await rateLimit(`connect:${session.userId}`, 10, 60)).ok) {
+    return NextResponse.json({ error: 'rate limited' }, { status: 429 });
+  }
   const slug = loadEnv(githubEnv).GITHUB_APP_SLUG;
   if (!slug) return NextResponse.json({ error: 'GITHUB_APP_SLUG not configured' }, { status: 500 });
 

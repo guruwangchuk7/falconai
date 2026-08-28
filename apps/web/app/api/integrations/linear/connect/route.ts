@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { linearEnv, loadEnv } from '@falcon/config';
+import { rateLimit } from '@falcon/queue';
 import { getActiveSession } from '@/lib/session';
 
 export const runtime = 'nodejs';
@@ -19,6 +20,9 @@ export function linearRedirectUri(reqUrl: string): string {
 export async function GET(req: Request) {
   const session = await getActiveSession();
   if (!session) return NextResponse.redirect(new URL('/api/auth/signin', req.url));
+  if (!(await rateLimit(`connect:${session.userId}`, 10, 60)).ok) {
+    return NextResponse.json({ error: 'rate limited' }, { status: 429 });
+  }
 
   const env = loadEnv(linearEnv);
   if (!env.LINEAR_CLIENT_ID) {

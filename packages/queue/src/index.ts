@@ -23,6 +23,15 @@ export function conn(): Redis {
   return _conn;
 }
 
+/** Fixed-window rate limiter on Redis (INCR + EXPIRE). Cheap and good enough to blunt floods on
+ *  public endpoints (webhooks) and abusive connect attempts. `ok:false` → caller returns 429. */
+export async function rateLimit(key: string, limit: number, windowSec: number): Promise<{ ok: boolean; remaining: number }> {
+  const r = conn();
+  const n = await r.incr(`rl:${key}`);
+  if (n === 1) await r.expire(`rl:${key}`, windowSec);
+  return { ok: n <= limit, remaining: Math.max(0, limit - n) };
+}
+
 let _sync: Queue<SyncJob> | undefined;
 let _index: Queue<IndexJob> | undefined;
 let _digest: Queue<DigestJob> | undefined;

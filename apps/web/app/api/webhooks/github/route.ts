@@ -3,11 +3,15 @@ import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { getDb, schema } from '@falcon/db';
 import { githubEnv, loadEnv } from '@falcon/config';
-import { defaultJobOpts, syncQueue } from '@falcon/queue';
+import { defaultJobOpts, rateLimit, syncQueue } from '@falcon/queue';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  if (!(await rateLimit(`wh:gh:${ip}`, 120, 60)).ok) {
+    return NextResponse.json({ error: 'rate limited' }, { status: 429 });
+  }
   const raw = await req.text();
   const sig = req.headers.get('x-hub-signature-256') ?? '';
   const secret = loadEnv(githubEnv).GITHUB_WEBHOOK_SECRET;

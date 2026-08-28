@@ -9,6 +9,7 @@ const ERRORS: Record<string, string> = {
   linear_misconfigured: 'Linear is not fully configured (missing client credentials).',
   jira_fields: 'Jira needs a base URL (https://…), email, and API token.',
   jira_auth: 'Jira rejected those credentials — check the email and API token.',
+  rate_limited: 'Too many connection attempts — wait a minute and try again.',
 };
 
 export default async function IntegrationsPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {

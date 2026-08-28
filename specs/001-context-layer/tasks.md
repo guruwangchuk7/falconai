@@ -27,8 +27,9 @@ integration tests, and any live API/DB call. Run via `HANDOFF.md` on a Docker+cr
   + search + page/API.
 - **PARTIAL:** T042 CI gates (`.github/workflows/ci.yml` runs typecheck + the Testcontainers
   isolation/ACL/partition-prune suite + a no-token-in-DB static gate; enabling branch protection
-  to *require* them is a GitHub setting Guru flips); T046 security (HMAC webhooks + RLS pooling
-  done; rate limits not).
+  to *require* them is a GitHub setting Guru flips); T046 security (HMAC webhooks + RLS pooling +
+  Redis fixed-window rate limits on webhooks/connect done; the remaining bit is confirming
+  transaction-mode pooling in each deployed env — a runtime/ops check).
 - **DONE (added post-build):** T014 observability (Sentry web+worker + PostHog web via
   `@falcon/observability` — dependency-light, env-guarded, Langfuse already in llm);
   T005 CI skeleton (GitHub Actions); T040 decision-index seeding +

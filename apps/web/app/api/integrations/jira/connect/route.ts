@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { schema } from '@falcon/db';
-import { defaultJobOpts, syncQueue } from '@falcon/queue';
+import { defaultJobOpts, rateLimit, syncQueue } from '@falcon/queue';
 import { getActiveSession } from '@/lib/session';
 import { deps, secrets } from '@/lib/deps';
 
@@ -15,6 +15,9 @@ export const runtime = 'nodejs';
 export async function POST(req: Request) {
   const session = await getActiveSession();
   if (!session) return NextResponse.redirect(new URL('/api/auth/signin', req.url), 303);
+  if (!(await rateLimit(`connect:${session.userId}`, 10, 60)).ok) {
+    return NextResponse.redirect(new URL('/integrations?error=rate_limited', req.url), 303);
+  }
 
   const form = await req.formData();
   const baseUrl = String(form.get('baseUrl') ?? '').trim().replace(/\/+$/, '');
