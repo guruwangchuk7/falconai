@@ -56,7 +56,8 @@ The code is written and typechecks; nothing has been executed. To prove it:
 ## 4. Remaining build work (tell me to do these, or do them yourself)
 - [x] Linear **connect flow** (OAuth2) + Linear webhook — done. Set `LINEAR_CLIENT_ID/SECRET`
   and `LINEAR_WEBHOOK_SECRET`, register the redirect URI `<web>/api/integrations/linear/callback`.
-- [ ] Jira **connect flow** still to build (adapter is poll-first; needs an API-token credential path).
+- [x] Jira **connect flow** — done (API-token form on `/integrations`, verified against Jira before
+  storing; poll-only, no webhook per AD-4).
 - [ ] The **recall@k eval** harness — settle `voyage-code-4` vs `voyage-4-large` (+ rerank).
 - [ ] Wire **Sentry + PostHog**; add **rate limiting** on connect/webhook; add **CI gates**
   (the partition-prune EXPLAIN assertion + "no token in app DB" check) and a Playwright smoke.

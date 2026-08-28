@@ -23,10 +23,10 @@ integration tests, and any live API/DB call. Run via `HANDOFF.md` on a Docker+cr
   T020–T029 US1 (schema, GitHub adapter, connect+callback, webhook, sync/index jobs, retrieve,
   retrieval API, integrations page, poll); T031–T033 US2 (digest schema, job, page+API);
   T036 Linear/Jira adapters; T037 Linear connect (OAuth2) + callback + `POST /api/webhooks/linear`
-  (HMAC-verified) + Connect-Linear UI; T038–T039 decision schema + search + page/API.
-- **PARTIAL:** T014 observability (Langfuse wired in llm; Sentry/PostHog not); T037 Jira connect
-  flow not built (Jira adapter is poll-first, needs an API-token credential path — Linear done);
-  T046 security (HMAC webhooks + RLS pooling done; rate limits not).
+  (HMAC-verified) + Jira connect (API-token form + verify) + Connect UI; T038–T039 decision schema
+  + search + page/API.
+- **PARTIAL:** T014 observability (Langfuse wired in llm; Sentry/PostHog not); T046 security
+  (HMAC webhooks + RLS pooling done; rate limits not).
 - **NOT DONE:** T005 CI skeleton; T018–T019 (retrieval-provenance + github-sync integration
   tests); T040 decision-index seeding; T041 evals recall@k; T042 CI gates; T043 Playwright;
   T044 quickstart execution; T045 doc refresh.

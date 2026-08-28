@@ -4,10 +4,18 @@ import { deps } from '@/lib/deps';
 
 export const runtime = 'nodejs';
 
-export default async function IntegrationsPage() {
+const ERRORS: Record<string, string> = {
+  invalid_state: 'Connection request expired or was invalid — please try again.',
+  linear_misconfigured: 'Linear is not fully configured (missing client credentials).',
+  jira_fields: 'Jira needs a base URL (https://…), email, and API token.',
+  jira_auth: 'Jira rejected those credentials — check the email and API token.',
+};
+
+export default async function IntegrationsPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const session = await getActiveSession();
   if (!session) return null;
 
+  const { error } = await searchParams;
   const conns = await deps().db.withTenant(session.workspaceId, (tx) => tx.select().from(schema.connection));
 
   return (
@@ -23,6 +31,11 @@ export default async function IntegrationsPage() {
           </a>
         </div>
       </div>
+      {error ? (
+        <p className="mb-4 rounded border border-hairline bg-red-50 px-3 py-2 text-sm text-red-700">
+          {ERRORS[error] ?? 'Something went wrong connecting that source.'}
+        </p>
+      ) : null}
       {conns.length === 0 ? (
         <p className="text-muted">No sources connected yet. Connect GitHub or Linear to index your recent work.</p>
       ) : (
@@ -39,6 +52,23 @@ export default async function IntegrationsPage() {
           ))}
         </ul>
       )}
+
+      <details className="mt-8 border-t border-hairline pt-4">
+        <summary className="cursor-pointer text-sm font-medium text-ink">Connect Jira (API token)</summary>
+        <form method="post" action="/api/integrations/jira/connect" className="mt-3 flex max-w-md flex-col gap-2">
+          <input name="baseUrl" type="url" required placeholder="https://your-org.atlassian.net"
+            className="rounded border border-hairline px-3 py-1.5 text-sm text-ink" />
+          <input name="email" type="email" required placeholder="you@company.com"
+            className="rounded border border-hairline px-3 py-1.5 text-sm text-ink" />
+          <input name="apiToken" type="password" required placeholder="Jira API token"
+            className="rounded border border-hairline px-3 py-1.5 text-sm text-ink" />
+          <button type="submit" className="self-start rounded bg-ink px-3 py-1.5 text-sm text-white">Connect Jira</button>
+          <p className="text-xs text-muted">
+            Create a token at id.atlassian.com → Security → API tokens. Stored encrypted in the
+            secrets store, never in the app database.
+          </p>
+        </form>
+      </details>
     </main>
   );
 }
