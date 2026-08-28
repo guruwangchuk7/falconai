@@ -25,6 +25,21 @@ owner-decisions and pre-build actions, not implementation tasks (repo is at the 
   path ships. Five silent-failure paths (partition-prune, RLS pooling, omission diff, ACL
   intersection, blame-neutral) need tests written first.
 
+## Code-review findings — context layer (branch 001-context-layer)
+
+From `/review` on 2026-08-28. Fixed findings are committed; these are the residual, tracked ones.
+
+- [ ] **F3 (perf/DoS) — GitHub webhook scans every workspace per event.** `webhooks/github`
+  iterates all workspaces to resolve an installation → O(tenants) DB round-trips per delivery.
+  Fix: a `github_installations(installation_id → workspace_id)` lookup table (schema change).
+  Low risk at pilot scale; close before onboarding many tenants.
+- [ ] **F6 (spec-gap) — `searchDecisions` claims "recency-weighted" but only distance-orders**
+  and sets a freshness flag. Either implement a recency term in the ranking or soften the doc/spec
+  wording so the code and the contract agree.
+- [ ] **Coverage — no end-to-end `retrieve()` test (T018/T019 open).** The invariant tests cover
+  the DB layer (isolation/ACL/partition-prune/fail-closed) but not the `retrieve()` function
+  itself. Add once Docker is available to run integration tests.
+
 ## Thesis / validation (do before building the Coordinator)
 
 - [ ] **Card-quality gate at end of Phase 1** (Issue 0): blind A/B vs the human baseline,
