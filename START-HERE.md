@@ -36,7 +36,9 @@ Deeper detail: `TODOS.md` (backlog), `specs/001-context-layer/HANDOFF.md` (how t
   live? Cheap, and it can invalidate the live-mediation thesis before you build toward it.
 
 ## 3. Run the context layer that's now built (needs YOUR machine: Docker + accounts)
-The code is written and typechecks; nothing has been executed. To prove it:
+The guard suite (isolation/ACL/partition-prune/pooling) now passes in CI on real Postgres —
+SC-003 is proven. What's left is the LIVE app flow (connect a real source → sync → retrieve),
+which needs your machine + creds:
 - [ ] Install prereqs: **Docker Desktop**, Node 24, `corepack enable`. Accounts: Supabase,
   a **GitHub App** (repo-scoped, with a webhook + secret), Voyage, Anthropic, Redis (Upstash).
 - [ ] Create the **GitHub App** (the fiddly one): repo permissions (contents, pull requests,
@@ -78,6 +80,6 @@ The code is written and typechecks; nothing has been executed. To prove it:
 ---
 
 ### One-line status
-Planning + reviews: done. Context layer: **written and typecheck-clean, not yet run.** The
-distance to "shipped" is: run it on your machine, pass the guard tests, close the section-4 gaps,
-and make the section-5 calls.
+Planning + reviews: done. Context layer: **built; guard suite (incl. SC-003 isolation) green in
+CI on real Postgres.** The distance to "shipped" is: rotate the leaked keys, run the LIVE app flow
+on your machine (connect → sync → retrieve), then merge/ship. Most section-4 build gaps are now closed.

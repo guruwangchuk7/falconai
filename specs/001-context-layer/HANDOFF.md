@@ -29,11 +29,17 @@ The full stack is written and **typecheck-clean** (`pnpm -r typecheck` + `tsc -p
 digest/poll jobs, `retrieve()`, digest, decision search, Auth.js, the dashboard, the GitHub
 connect flow, and the HMAC-verified webhook.
 
-## What is NOT run / NOT built
-- **Nothing has been executed** — no SQL migration, no integration tests, no live API/DB/LLM call.
-  Docker/Postgres/creds are absent in the authoring env. It all typechecks; it is unproven at runtime.
-- **Gaps (tasks.md):** Sentry/PostHog wiring, Linear/Jira connect flow + Linear webhook,
-  decision-index seeding, the recall@k eval harness, CI gates, Playwright smoke, rate limiting.
+## What IS proven vs still unrun
+- **Proven in CI** (`.github/workflows/ci.yml`, green on `cc4b25b`): the migration applies to a real
+  pgvector Postgres, and the blocker-class guard suite passes on a non-superuser role — isolation,
+  ACL, fail-closed pooling, and partition-prune (runtime "Subplans Removed", scans exactly 1 of 16).
+  Plus full typecheck + the no-token-in-DB gate. SC-003 tenant isolation is no longer just asserted.
+- **Still unrun (needs your machine + creds):** the live app flow — sign in, connect a real
+  GitHub/Linear/Jira source, sync, embed via Voyage, retrieve. That path uses external APIs CI can't
+  reach. Run it via the quickstart (T044) to close it.
+- **Remaining gaps (tasks.md):** T018/T019 (retrieval-provenance + github-sync integration tests),
+  T043 Playwright smoke — writable, best against a live DB. Sentry/PostHog, connect flows, seeding,
+  evals, CI gates, and rate limiting are now DONE (see tasks.md "Implementation status").
 
 ## First-run sequence (on a machine with Docker + creds)
 1. `corepack enable && pnpm install`
