@@ -4,7 +4,7 @@ import { generateDigest, indexArtifact, upsertArtifact, type CoreDeps } from '@f
 import type { SecretStore } from '@falcon/secrets';
 import type { ArtifactInput } from '@falcon/integrations';
 import { buildAdapter, type ConnectionRow } from './adapters.js';
-import { digestQueue, indexQueue, syncQueue, defaultJobOpts, type DigestJob, type IndexJob, type SyncJob } from './queues.js';
+import { digestQueue, indexQueue, syncQueue, defaultJobOpts, type DigestJob, type IndexJob, type SyncJob } from '@falcon/queue';
 
 async function memberLoginMap(deps: CoreDeps, workspaceId: string): Promise<Map<string, string>> {
   const rows = await deps.db.rootDb
@@ -44,7 +44,7 @@ export async function handleSync(deps: CoreDeps, secrets: SecretStore, payload: 
     for (const it of items) {
       const userId = (it.ownerExternalId && members.get(it.ownerExternalId)) || conn.userId;
       const artifactId = await deps.db.withTenant(workspaceId, (tx) => upsertArtifact(tx, workspaceId, userId, it));
-      await indexQueue.add('index', { workspaceId, artifactId }, defaultJobOpts);
+      await indexQueue().add('index', { workspaceId, artifactId }, defaultJobOpts);
       count++;
     }
 
@@ -79,7 +79,7 @@ export async function pollAll(deps: CoreDeps): Promise<void> {
     const conns = await deps.db.withTenant(ws.id, (tx) =>
       tx.select({ id: schema.connection.id }).from(schema.connection).where(eq(schema.connection.status, 'active')),
     );
-    for (const c of conns) await syncQueue.add('sync', { workspaceId: ws.id, connectionId: c.id }, defaultJobOpts);
+    for (const c of conns) await syncQueue().add('sync', { workspaceId: ws.id, connectionId: c.id }, defaultJobOpts);
   }
 }
 
@@ -88,5 +88,5 @@ export async function pollDigests(deps: CoreDeps): Promise<void> {
   const rows = await deps.db.rootDb
     .select({ workspaceId: schema.membership.workspaceId, userId: schema.membership.userId })
     .from(schema.membership);
-  for (const r of rows) await digestQueue.add('digest', { workspaceId: r.workspaceId, userId: r.userId }, defaultJobOpts);
+  for (const r of rows) await digestQueue().add('digest', { workspaceId: r.workspaceId, userId: r.userId }, defaultJobOpts);
 }
