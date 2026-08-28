@@ -3,17 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
-  },
+  "exports": { ".": "./src/index.ts" },
   "scripts": {
     "migrate": "psql \"$DATABASE_URL\" -f drizzle/0001_init.sql",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "drizzle-orm": "^0.36.0",
-    "postgres": "^3.4.4"
+    "drizzle-orm": "0.36.4",
+    "postgres": "3.4.5"
   },
   "devDependencies": {
     "@types/node": "24",

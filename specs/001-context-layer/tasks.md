@@ -36,7 +36,7 @@ written before their implementation.
 - [X] T006 `packages/db`: Drizzle + Supabase **transaction-mode** pooler connection; a `withTenant(workspaceId, fn)` helper that opens a txn, runs `set local app.workspace_id`, and asserts it (the ONLY path to tenant data)
 - [X] T007 `packages/db`: schema for `workspace`, `user`, `membership` (foundational entities per data-model.md) + Drizzle migrations
 - [X] T008 `packages/db`: enable + FORCE RLS on every tenant table; create the app DB role with **no `BYPASSRLS`**, not table owner; policies `using (workspace_id = current_setting('app.workspace_id')::uuid)`
-- [ ] T009 [P] Integration test harness: Testcontainers Postgres with `pgvector` ≥ 0.8; helper to seed workspaces/users/repos (real DB, never mocked)
+- [X] T009 [P] Integration test harness: Testcontainers Postgres with `pgvector` ≥ 0.8; helper to seed workspaces/users/repos (real DB, never mocked) — `tests/support/pg.ts` (typecheck-green; run pending a Docker host)
 - [ ] T010 `apps/web`: Auth.js (sign up, session) + resolve active `membership` → the workspace context every request uses
 - [ ] T011 [P] `packages/secrets`: `SecretStore` interface + dedicated-store client (Infisical/cloud SM per research D3) with per-tenant envelope encryption; `put/get/rotate/revoke`; app DB stores only `secret_ref` (R26)
 - [ ] T012 [P] `packages/llm`: `ChatProvider` (Claude Haiku, **pinned** version) + `EmbeddingProvider` (`voyage-code-4`, dim 1024, version recorded) + `RerankProvider` (`rerank-2.5`) behind cross-vendor interfaces; Langfuse logging on every chat call
@@ -54,9 +54,9 @@ written before their implementation.
 
 ### Tests (write first, must fail)
 
-- [ ] T015 [P] [US1] Integration test — tenant isolation: seed workspaces A & B; a query in A crafted to match B returns **zero** B items (`tests/integration/isolation.test.ts`, SC-003)
-- [ ] T016 [P] [US1] Integration test — ACL: a private-repo artifact is never returned to a non-member (`tests/integration/acl.test.ts`, SC-003)
-- [ ] T017 [P] [US1] Integration test — partition prune: `EXPLAIN (ANALYZE)` through the RLS path asserts `Partitions removed` (`tests/integration/partition-prune.test.ts`)
+- [X] T015 [P] [US1] Integration test — tenant isolation: seed workspaces A & B; a query in A crafted to match B returns **zero** B items (`tests/integration/isolation.test.ts`, SC-003) — written + typecheck-green; run pending Docker
+- [X] T016 [P] [US1] Integration test — ACL: a private-repo artifact is never returned to a non-member (`tests/integration/acl.test.ts`, SC-003) — written + typecheck-green; run pending Docker
+- [X] T017 [P] [US1] Integration test — partition prune: `EXPLAIN (ANALYZE)` through the RLS path asserts `Partitions removed` (`tests/integration/partition-prune.test.ts`) — written + typecheck-green; run pending Docker. (Plus `tests/integration/pooling.test.ts` for RLS fail-closed.)
 - [ ] T018 [P] [US1] Contract test — `retrieve()` returns only real, provenance-bearing items; no fabrication (`tests/contract/retrieval.test.ts`, SC-004)
 - [ ] T019 [P] [US1] Integration test — GitHub sync → artifact indexed → retrievable within budget (`tests/integration/sync-github.test.ts`, SC-001/002)
 
