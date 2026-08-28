@@ -39,6 +39,10 @@ From `/review` on 2026-08-28. Fixed findings are committed; these are the residu
 - [ ] **Coverage — no end-to-end `retrieve()` test (T018/T019 open).** The invariant tests cover
   the DB layer (isolation/ACL/partition-prune/fail-closed) but not the `retrieve()` function
   itself. Add once Docker is available to run integration tests.
+- [ ] **No linter configured.** The false-green `pnpm lint` (turbo task with no implementers) was
+  removed. Wire ESLint (flat config) as a real gate. Note: default Prettier disagrees with the
+  hand-rolled compact style in ~34 files, so a matching config is needed before `--write`/`--check`
+  can be a passing gate (from `/devex-review`, 2026-08-28).
 
 ## Thesis / validation (do before building the Coordinator)
 

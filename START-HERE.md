@@ -45,7 +45,9 @@ The code is written and typechecks; nothing has been executed. To prove it:
 - [ ] `pnpm install`, then `cp .env.example .env` and fill every value. Use the Supabase
   **transaction-mode** pooler URL (port 6543), and set a base64 32-byte `SECRETS_KEK`.
 - [ ] Create the app DB role (non-superuser, no BYPASSRLS) — exact grants are in
-  `tests/support/pg.ts`. Then `pnpm --filter @falcon/db migrate`.
+  `tests/support/pg.ts`. Then `pnpm --filter @falcon/db migrate`. **`migrate` shells out to
+  `psql`**, so psql must be on PATH and `DATABASE_URL` **exported into your shell** (psql doesn't
+  read `.env`): `export DATABASE_URL=$(grep ^DATABASE_URL .env | cut -d= -f2-)`.
 - [ ] **Run the guard tests (Docker):** `pnpm test:integration`. The isolation, ACL,
   partition-prune, and fail-closed tests must pass — SC-003 (tenant isolation) is blocker-class.
 - [ ] `pnpm --filter @falcon/web dev` + `pnpm --filter @falcon/worker dev`, sign in with GitHub,

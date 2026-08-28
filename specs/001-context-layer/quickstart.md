@@ -32,8 +32,11 @@ AUTH_SECRET=
 
 ```bash
 pnpm install
+# migrate runs psql against $DATABASE_URL — psql must be on PATH and DATABASE_URL exported into
+# the shell (psql does NOT read .env). e.g.  export DATABASE_URL=$(grep ^DATABASE_URL .env | cut -d= -f2-)
 pnpm --filter @falcon/db migrate     # schema + RLS policies + hash partitions
-pnpm --filter @falcon/db seed        # a test workspace, two users, one shared + one private repo
+pnpm --filter @falcon/db seed        # NOT YET IMPLEMENTED (tracked in TODOS) — seed a test
+                                     # workspace, two users, one shared + one private repo by hand for now
 ```
 
 ## Run
@@ -75,7 +78,8 @@ pnpm --filter @falcon/worker dev     # BullMQ workers + poll scheduler (Fly.io t
 
 ## Provider / eval checks
 
-- `pnpm --filter @falcon/evals recall` runs the recall@k harness (`voyage-code-4` vs
+- **(NOT YET IMPLEMENTED — `packages/evals` doesn't exist yet; tracked in TODOS/START-HERE §4)**
+  `pnpm --filter @falcon/evals recall` will run the recall@k harness (`voyage-code-4` vs
   `voyage-4-large`, ± `rerank-2.5`) to settle the embedding choice (research D6). This harness is
   also the card-quality gate instrument for later phases.
 - Confirm every digest generation appears in Langfuse with its inputs (FR-015) and a pinned model.
