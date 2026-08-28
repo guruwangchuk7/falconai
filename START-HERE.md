@@ -25,13 +25,14 @@ Deeper detail: `TODOS.md` (backlog), `specs/001-context-layer/HANDOFF.md` (how t
   `mailto:` link instead of a fake "you're on the list."
 
 ## 2. Fire the long-clock items today (they wait on other people, so start them early)
-- [ ] **Email the privacy lawyer.** Attach `reviews/legal-brief-capture-consent.md`. Ask for a
-  scoped two-hour read, and name questions **A3** (transient transcription = recording?) and
-  **B6** (biometric/BIPA) as the two that gate a product decision. This gates the consent
-  sections of the PRD and whether the system-audio fallback stays cut.
-- [ ] **Start WoZ recruiting.** Piggyback the Phase 0 teams. The two card designs to test are in
-  `design/woz-cards.html` (asymmetric vs symmetric). This is half the trigger to unlock the
-  solo-first repositioning (D1).
+- [ ] **Email the privacy lawyer.** Draft is ready at `reviews/lawyer-email-draft.md` — paste,
+  attach `reviews/legal-brief-capture-consent.md`, send. It's scoped to a ~2-hour read on questions
+  **A3** (consent record for the non-consenting party) and **B6** (pairwise vs session-scoped
+  consent for group disclosure) — the two that gate a product decision. Gates the PRD consent
+  sections and whether the system-audio fallback stays cut.
+- [ ] **Start WoZ recruiting.** Plan + hypotheses + metrics + a paste-ready recruiting script are in
+  `reviews/woz-test-plan.md`; the two card shapes to test are in `design/woz-cards.html` (asymmetric
+  vs symmetric). This is half the trigger to unlock the solo-first repositioning (D1).
 - [ ] **Run the latency-window measurement (OV-3):** does a card land while the moment is still
   live? Cheap, and it can invalidate the live-mediation thesis before you build toward it.
 

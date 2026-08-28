@@ -22,15 +22,17 @@ it writes.** Full detail lives in [`PRD.md`](./PRD.md).
 Both were authored deliberately; treat their copy as fixed unless the owner (Guru) says
 otherwise.
 
-## Current stage — SETUP ONLY
+## Current stage — PHASE 1 SHIPPED
 
-> **Hard gate.** This repository is at project-setup stage. **Do not write application code,
-> do not begin the Next.js transformation, and do not implement any PRD features until the
-> owner (Guru) explicitly approves.** Setup, documentation, specs, and configuration only.
+> **Phase 1 (Context Layer) is implemented and merged to `main`** (spec: `specs/001-context-layer/`).
+> Its two load-bearing guarantees are proven in CI on real Postgres: SC-003 tenant isolation and
+> SC-004 provenance-gated retrieval. **Not yet run** against live third-party APIs (the
+> connect→sync→retrieve flow, T044) — see `specs/001-context-layer/HANDOFF.md` and `START-HERE.md`.
 
-When implementation is approved, follow the phased roadmap in **PRD §17** — context layer
-before audio, solo before paired, pairing before mediation. Do not jump ahead of the
-current phase.
+**Gate for what's next.** Follow the phased roadmap in **PRD §17** — context layer → solo client →
+pairing → mediation. **Do not start the next phase's implementation until Guru explicitly approves
+it**, and do not jump ahead of the current phase. Phase 2 (solo client) additionally waits on the
+WoZ result + the held **D1** solo-first decision (see the v2.7 changelog + `START-HERE.md` §5).
 
 ## How we work here — Spec-Driven Development (Spec Kit)
 
