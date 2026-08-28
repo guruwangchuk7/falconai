@@ -39,8 +39,11 @@ integration tests, and any live API/DB call. Run via `HANDOFF.md` on a Docker+cr
   (README + `ARCHITECTURE.md`); T018/T019 integration tests (retrieval contract — provenance/ACL/
   no-fabrication SC-004; sync→index→retrievable + relevance + idempotency SC-001/002 data path) —
   offline deterministic embeddings, run in CI, no API keys.
-- **NOT DONE:** T043 Playwright smoke (needs a running app); T044 quickstart end-to-end (live
-  connect→sync→retrieve on your machine + creds).
+- **PARTIAL:** T043 Playwright smoke — the signed-out shell is written and typecheck-clean
+  (`apps/web/e2e/smoke.spec.ts`: boot, auth boundary, 401 on unauth retrieval, sign-in page); the
+  signed-in journey is skipped, folded into T044.
+- **NOT DONE:** T044 quickstart end-to-end (live connect→sync→retrieve on your machine + creds;
+  also runs the skipped T043 authed journey).
 
 ## Format: `[ID] [P?] [Story] Description with file path`
 

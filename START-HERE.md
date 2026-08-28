@@ -54,18 +54,19 @@ which needs your machine + creds:
 - [ ] **Run the guard tests (Docker):** `pnpm test:integration`. The isolation, ACL,
   partition-prune, and fail-closed tests must pass — SC-003 (tenant isolation) is blocker-class.
 - [ ] `pnpm --filter @falcon/web dev` + `pnpm --filter @falcon/worker dev`, sign in with GitHub,
-  click **Connect GitHub**, watch it sync and try `/decisions` + `/me/digest`.
+  click **Connect GitHub**, watch it sync and try `/decisions` + `/me/digest`. This is T044 — the
+  last "never run live" surface.
+- [ ] Optional smoke (no creds, just the app up): `npx playwright install chromium` then
+  `pnpm --filter @falcon/web e2e` — checks boot + the auth boundary.
 
-## 4. Remaining build work (tell me to do these, or do them yourself)
-- [x] Linear **connect flow** (OAuth2) + Linear webhook — done. Set `LINEAR_CLIENT_ID/SECRET`
-  and `LINEAR_WEBHOOK_SECRET`, register the redirect URI `<web>/api/integrations/linear/callback`.
-- [x] Jira **connect flow** — done (API-token form on `/integrations`, verified against Jira before
-  storing; poll-only, no webhook per AD-4).
-- [ ] The **recall@k eval** harness — settle `voyage-code-4` vs `voyage-4-large` (+ rerank).
-- [ ] Wire **Sentry + PostHog**; add **rate limiting** on connect/webhook; add **CI gates**
-  (the partition-prune EXPLAIN assertion + "no token in app DB" check) and a Playwright smoke.
+## 4. Remaining build work
+Most Phase-1 build work is done and on `main`. What's DONE (added post-build): Linear + Jira connect
+flows, `recall@k` eval harness (`pnpm --filter @falcon/evals recall`, needs `VOYAGE_API_KEY`),
+Sentry/PostHog wiring, connect/webhook rate limiting, CI gates (partition-prune EXPLAIN + no-token-in-DB),
+dev seed, and the Playwright smoke shell. Still open:
 - [ ] Pick the concrete **secrets store** (research D3) before the connect flow ships to prod.
 - [ ] Rebuild the **§18 economics** pool number from real Phase-1 telemetry (OV-7).
+- [ ] The signed-in **T044** live run (above) + its Playwright authed journey.
 
 ## 5. Decisions still open (yours to make)
 - [ ] **D1 — solo-first repositioning:** apply after the WoZ result + a Phase-2 solo-retention
@@ -74,9 +75,13 @@ which needs your machine + creds:
 - [ ] **OV-10 — erasure/tombstoning** design for the Decision Index (before it compounds).
 - [ ] Whether to keep the **system-audio fallback** cut (waits on the lawyer read).
 
-## 6. Ship it when you're happy
-- The build lives on branch **`001-context-layer`** (16 commits). Review the diff, run it, then
-  merge / open a PR (or run `/ship`). `main` still holds the reviewed PRD (v2.7) + the docs.
+## 6. Shipped — remaining ship-hygiene
+- Phase 1 is **merged to `main`** (merge commit; the `001-context-layer` branch is kept). CI is
+  green on `main`.
+- [ ] **Enable branch protection** so CI is *required* to merge: GitHub → repo **Settings** →
+  **Branches** → **Add rule** for `main` → check **Require status checks to pass** and select the
+  `typecheck`, `integration`, and `no-token-in-db` checks → also **Require a pull request before
+  merging** if you want review gates. (Right now nothing blocks a direct push to `main`.)
 
 ---
 
