@@ -44,6 +44,7 @@ export const githubEnv = z.object({
 export const linearEnv = z.object({
   LINEAR_CLIENT_ID: z.string().optional(),
   LINEAR_CLIENT_SECRET: z.string().optional(),
+  LINEAR_WEBHOOK_SECRET: z.string().optional(), // HMAC signing secret for /api/webhooks/linear
 });
 
 export const authEnv = z.object({

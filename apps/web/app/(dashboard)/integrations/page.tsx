@@ -14,12 +14,17 @@ export default async function IntegrationsPage() {
     <main>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-medium text-ink">Integrations</h1>
-        <a href="/api/integrations/github/connect" className="rounded bg-ink px-3 py-1.5 text-sm text-white">
-          Connect GitHub
-        </a>
+        <div className="flex gap-2">
+          <a href="/api/integrations/github/connect" className="rounded bg-ink px-3 py-1.5 text-sm text-white">
+            Connect GitHub
+          </a>
+          <a href="/api/integrations/linear/connect" className="rounded border border-hairline px-3 py-1.5 text-sm text-ink">
+            Connect Linear
+          </a>
+        </div>
       </div>
       {conns.length === 0 ? (
-        <p className="text-muted">No sources connected yet. Connect GitHub to index your recent work.</p>
+        <p className="text-muted">No sources connected yet. Connect GitHub or Linear to index your recent work.</p>
       ) : (
         <ul className="divide-y divide-hairline">
           {conns.map((c) => (
