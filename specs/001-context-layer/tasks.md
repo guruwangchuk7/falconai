@@ -25,11 +25,13 @@ integration tests, and any live API/DB call. Run via `HANDOFF.md` on a Docker+cr
   T036 Linear/Jira adapters; T037 Linear connect (OAuth2) + callback + `POST /api/webhooks/linear`
   (HMAC-verified) + Jira connect (API-token form + verify) + Connect UI; T038–T039 decision schema
   + search + page/API.
-- **PARTIAL:** T014 observability (Langfuse wired in llm; Sentry/PostHog not); T042 CI gates
-  (`.github/workflows/ci.yml` runs typecheck + the Testcontainers isolation/ACL/partition-prune
-  suite + a no-token-in-DB static gate; enabling branch protection to *require* them is a GitHub
-  setting Guru flips); T046 security (HMAC webhooks + RLS pooling done; rate limits not).
-- **DONE (added post-build):** T005 CI skeleton (GitHub Actions); T040 decision-index seeding +
+- **PARTIAL:** T042 CI gates (`.github/workflows/ci.yml` runs typecheck + the Testcontainers
+  isolation/ACL/partition-prune suite + a no-token-in-DB static gate; enabling branch protection
+  to *require* them is a GitHub setting Guru flips); T046 security (HMAC webhooks + RLS pooling
+  done; rate limits not).
+- **DONE (added post-build):** T014 observability (Sentry web+worker + PostHog web via
+  `@falcon/observability` — dependency-light, env-guarded, Langfuse already in llm);
+  T005 CI skeleton (GitHub Actions); T040 decision-index seeding +
   dev `seed` script (`packages/db` — workspace/users/connection/artifacts + lifecycle decision
   records, embedded when `VOYAGE_API_KEY` set); T041 evals recall@k harness (`packages/evals` —
   pure ranking/recall verified here; live bake-off runs with `VOYAGE_API_KEY`); T045 doc refresh

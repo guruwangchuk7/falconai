@@ -15,6 +15,7 @@
     "@falcon/db": "workspace:*",
     "@falcon/integrations": "workspace:*",
     "@falcon/llm": "workspace:*",
+    "@falcon/observability": "workspace:*",
     "@falcon/queue": "workspace:*",
     "@falcon/secrets": "workspace:*",
     "drizzle-orm": "0.36.4",

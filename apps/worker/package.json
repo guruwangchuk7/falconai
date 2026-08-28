@@ -14,6 +14,7 @@
     "@falcon/db": "workspace:*",
     "@falcon/integrations": "workspace:*",
     "@falcon/llm": "workspace:*",
+    "@falcon/observability": "workspace:*",
     "@falcon/queue": "workspace:*",
     "@falcon/secrets": "workspace:*",
     "@linear/sdk": "29.0.0",
