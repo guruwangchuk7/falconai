@@ -23,12 +23,17 @@ committed docs, not in any chat.
   isolation, acl, partition-prune, pooling (fail-closed) + `tests/support/pg.ts` (Testcontainers
   harness that creates a NON-SUPERUSER role so RLS actually enforces).
 
+## Now built (whole context layer — see tasks.md "Implementation status")
+The full stack is written and **typecheck-clean** (`pnpm -r typecheck` + `tsc -p tsconfig.tests.json`):
+`packages/{db,config,secrets,llm,integrations,core,queue}` and `apps/{worker,web}` — sync/index/
+digest/poll jobs, `retrieve()`, digest, decision search, Auth.js, the dashboard, the GitHub
+connect flow, and the HMAC-verified webhook.
+
 ## What is NOT run / NOT built
-- The **SQL migration and the integration tests have not been executed** — they need a Postgres /
-  Docker host (Docker is absent in the authoring environment). They typecheck; they are unproven.
-- Everything downstream of `packages/db` is **not built**: `apps/web`, `apps/worker`,
-  `packages/{core,integrations,llm,secrets,evals,config}`, jobs, adapters, dashboard.
-  Resume tasks.md at T010 onward (T009/T015–T017 are written; T018/T019 and later are not).
+- **Nothing has been executed** — no SQL migration, no integration tests, no live API/DB/LLM call.
+  Docker/Postgres/creds are absent in the authoring env. It all typechecks; it is unproven at runtime.
+- **Gaps (tasks.md):** Sentry/PostHog wiring, Linear/Jira connect flow + Linear webhook,
+  decision-index seeding, the recall@k eval harness, CI gates, Playwright smoke, rate limiting.
 
 ## First-run sequence (on a machine with Docker + creds)
 1. `corepack enable && pnpm install`
