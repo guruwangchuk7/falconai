@@ -3,11 +3,9 @@ import { NextResponse } from 'next/server';
 import { githubEnv, loadEnv } from '@falcon/config';
 import { rateLimit } from '@falcon/queue';
 import { getActiveSession } from '@/lib/session';
+import { GH_STATE_COOKIE } from '@/lib/github-oauth';
 
 export const runtime = 'nodejs';
-
-/** Name of the CSRF state cookie shared with the callback (double-submit token). */
-export const GH_STATE_COOKIE = 'gh_oauth_state';
 
 /** Start the GitHub App installation flow. GitHub redirects back to the callback with an
  *  installation_id. (The App private key mints per-installation tokens, so there is no user

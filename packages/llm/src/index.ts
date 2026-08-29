@@ -71,18 +71,40 @@ export class AnthropicChatProvider implements ChatProvider {
 }
 
 // ---------- Voyage embeddings + rerank (REST) ----------
+
+/** POST to Voyage with retry+backoff on rate-limit / transient errors. Voyage's free tier (no
+ *  payment method) caps at 3 RPM and returns 429; the index worker runs many jobs concurrently, so
+ *  without this a burst fails whole jobs. Retries 429/500/503 with exponential backoff, honoring
+ *  the `Retry-After` header when present. Auth/validation errors (401/400) are NOT retried. */
+async function voyagePost(url: string, apiKey: string, body: unknown, label: string): Promise<Response> {
+  const maxAttempts = 6;
+  let backoffMs = 1000;
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) return res;
+    const retriable = res.status === 429 || res.status === 500 || res.status === 503;
+    if (!retriable || attempt >= maxAttempts) {
+      throw new Error(`voyage ${label} failed: ${res.status} ${await res.text()}`);
+    }
+    const retryAfter = Number(res.headers.get('retry-after'));
+    const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : backoffMs;
+    await new Promise((r) => setTimeout(r, waitMs));
+    backoffMs = Math.min(backoffMs * 2, 30_000);
+  }
+}
+
 class VoyageEmbeddingProvider implements EmbeddingProvider {
   readonly model = EMBEDDING_MODEL;
   readonly version = EMBEDDING_VERSION;
   readonly dim = EMBEDDING_DIM;
   constructor(private apiKey: string) {}
   async embed(texts: string[], inputType: 'document' | 'query' = 'document'): Promise<number[][]> {
-    const res = await fetch('https://api.voyageai.com/v1/embeddings', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, input: texts, input_type: inputType, output_dimension: this.dim }),
-    });
-    if (!res.ok) throw new Error(`voyage embeddings failed: ${res.status} ${await res.text()}`);
+    const res = await voyagePost('https://api.voyageai.com/v1/embeddings', this.apiKey,
+      { model: this.model, input: texts, input_type: inputType, output_dimension: this.dim }, 'embeddings');
     const json = (await res.json()) as { data: { embedding: number[] }[] };
     return json.data.map((d) => d.embedding);
   }
@@ -92,12 +114,8 @@ class VoyageRerankProvider implements RerankProvider {
   readonly model = RERANK_MODEL;
   constructor(private apiKey: string) {}
   async rerank(query: string, docs: string[], topK: number) {
-    const res = await fetch('https://api.voyageai.com/v1/rerank', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, query, documents: docs, top_k: topK }),
-    });
-    if (!res.ok) throw new Error(`voyage rerank failed: ${res.status} ${await res.text()}`);
+    const res = await voyagePost('https://api.voyageai.com/v1/rerank', this.apiKey,
+      { model: this.model, query, documents: docs, top_k: topK }, 'rerank');
     const json = (await res.json()) as { data: { index: number; relevance_score: number }[] };
     return json.data.map((d) => ({ index: d.index, score: d.relevance_score }));
   }

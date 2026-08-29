@@ -51,11 +51,18 @@ export function createDb(url: string): DbHandle {
 
 let _default: DbHandle | undefined;
 
-/** Lazy singleton from `DATABASE_URL` (app runtime). Tests use `createDb(containerUrl)` instead. */
+/**
+ * Lazy singleton for the app runtime. Prefers `APP_DATABASE_URL` (a NON-SUPERUSER, non-BYPASSRLS
+ * role — e.g. `falcon_app` — so RLS actually enforces per R25/SC-003) and falls back to
+ * `DATABASE_URL`. Migrations run separately as the owner via `DATABASE_URL`; only the runtime
+ * should use the restricted role. On managed Postgres (e.g. Supabase) the default `postgres` role
+ * has BYPASSRLS, which silently defeats tenant isolation — set `APP_DATABASE_URL` in production.
+ * Tests use `createDb(containerUrl)` with a purpose-built `falcon_app` role instead.
+ */
 export function getDb(): DbHandle {
   if (!_default) {
-    const url = process.env.DATABASE_URL;
-    if (!url) throw new Error('DATABASE_URL is required');
+    const url = process.env.APP_DATABASE_URL ?? process.env.DATABASE_URL;
+    if (!url) throw new Error('APP_DATABASE_URL or DATABASE_URL is required');
     _default = createDb(url);
   }
   return _default;

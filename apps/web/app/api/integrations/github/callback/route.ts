@@ -6,7 +6,7 @@ import { schema } from '@falcon/db';
 import { defaultJobOpts, syncQueue } from '@falcon/queue';
 import { getActiveSession } from '@/lib/session';
 import { deps } from '@/lib/deps';
-import { GH_STATE_COOKIE } from '../connect/route';
+import { GH_STATE_COOKIE } from '@/lib/github-oauth';
 
 export const runtime = 'nodejs';
 

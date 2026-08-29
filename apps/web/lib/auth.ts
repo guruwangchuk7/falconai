@@ -5,7 +5,10 @@ import { provisionUser } from './provision';
 /** Auth.js (GitHub). On sign-in we provision the app user + workspace and stash userId +
  *  workspaceId on the token/session (read by route handlers to scope tenant queries). */
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  providers: [GitHub],
+  // We sign in with the same GitHub *App* that powers repo sync (one app, not a separate OAuth
+  // App). GitHub Apps return an RFC 9207 `iss` on the auth callback; tell Auth.js the expected
+  // issuer so oauth4webapi validates it instead of rejecting it ("unexpected iss").
+  providers: [GitHub({ issuer: 'https://github.com/login/oauth' })],
   callbacks: {
     async jwt({ token, profile }) {
       if (profile) {
