@@ -23,6 +23,8 @@ Deeper detail: `TODOS.md` (backlog), `specs/001-context-layer/HANDOFF.md` (how t
   ```
 - [ ] Submit a test email on the page. Success = a row appears; failure now degrades to a
   `mailto:` link instead of a fake "you're on the list."
+  my answer: i have checked and it wokred.- guru wangchuk
+
 
 ## 2. Fire the long-clock items today (they wait on other people, so start them early)
 - [ ] **Email the privacy lawyer.** Draft is ready at `reviews/lawyer-email-draft.md` — paste,
@@ -89,3 +91,21 @@ dev seed, and the Playwright smoke shell. Still open:
 Planning + reviews: done. Context layer: **built; guard suite (incl. SC-003 isolation) green in
 CI on real Postgres.** The distance to "shipped" is: rotate the leaked keys, run the LIVE app flow
 on your machine (connect → sync → retrieve), then merge/ship. Most section-4 build gaps are now closed.
+
+---
+
+## Phase 2 — Personal Falcon (in progress: US1/US2/US3 MVP built)
+
+The personal-agent wedge (per D1, `reviews/d1-decision-memo.md`) is built on the context layer and
+running. **Try it:** sign in → **Ask Falcon** in the nav (`/falcon`). Ask about your own work
+("what did I do for authentication?") or **Summarize a topic**; every claim shows its source, and
+if Falcon can't ground an answer it says so. You can **edit** any answer — your version wins.
+
+- Spec/plan/tasks: `specs/002-personal-falcon/` (19/32 tasks done). Grounding gate + RLS on the new
+  tables are covered by automated tests (`tests/unit/answer-grounding.test.ts`,
+  `tests/integration/personal-falcon-rls.test.ts`).
+- **Success metric to watch:** solo retention (do you/testers come back to ask?) — this is the
+  second half of the D1 trigger; a strong read confirms building toward the Coordinator.
+- Still open before "done": authed end-to-end/contract tests (need a test-session harness),
+  confirmed-decision citations, answer streaming, an answer-grounding eval, and observability —
+  tracked in `specs/002-personal-falcon/tasks.md` (T012/T013/T019/T021/T022/T027–T032).

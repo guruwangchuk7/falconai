@@ -39,7 +39,7 @@ Do not start Phase 1 tasks until G1–G3 clear.
 
 - [x] T003 Add tenant-scoped entities to `packages/db/src/schema.ts`: `conversation`, `question`, `answer`, `answer_citation`, `query_event` (per data-model.md)
 - [x] T004 Author `packages/db/drizzle/0002_personal_falcon.sql`: create the tables, `enable`/`force row level security`, `workspace_id` tenant-isolation policies, and grants to `falcon_app` (depends T003)
-- [ ] T005 [P] Integration guard `tests/integration/personal-falcon-rls.test.ts`: new tables fail-closed without tenant ctx, isolate by workspace, reject mismatched-workspace inserts (extends the Phase-1 isolation suite; run as `falcon_app`)
+- [x] T005 [P] Integration guard `tests/integration/personal-falcon-rls.test.ts`: new tables fail-closed without tenant ctx, isolate by workspace, reject mismatched-workspace inserts (extends the Phase-1 isolation suite; run as `falcon_app`)
 - [x] T006 [P] Define `Answer`/`Claim`/`Citation` types + Zod schema in `packages/core/src/answer.ts` (per contracts/api.md)
 - [x] T007 Implement grounded-answer core in `packages/core/src/answer.ts`: reuse `retrieve.ts` for ACL/tenant candidates → Claude Haiku (pinned version) structured claims+citations → deterministic **verify-then-drop** (claim dropped if its citation ∉ retrieved set) → `Answer` (`grounded` | `no_grounded_answer`). **Accepts prior conversation turns as context for follow-up questions (FR-011)** — earlier Q&A is included in the prompt but does NOT relax the grounding gate (follow-ups are re-grounded against freshly retrieved candidates). (depends T003, T006)
 - [x] T008 [P] Unit test `packages/core/src/answer.test.ts`: verify-then-drop removes ungrounded claims; zero survivors → `no_grounded_answer`; confirmed-decisions-only filter (depends T007)
@@ -74,7 +74,7 @@ Do not start Phase 1 tasks until G1–G3 clear.
 **Independent Test**: user asks about accessible team work → cited answer; inaccessible artifact → never cited; another user's conversation → 404.
 
 - [ ] T019 [P] [US2] Integration test `tests/integration/falcon-acl.test.ts`: accessible team artifact cited; inaccessible artifact never surfaced; cross-user conversation read → 404 (contracts/api.md test 3)
-- [ ] T020 [US2] Confirm team-scope retrieval draws only from ACL-visible artifacts (reuse `retrieve.ts` ACL); extend the answer core scope if needed (depends T007)
+- [x] T020 [US2] Confirm team-scope retrieval draws only from ACL-visible artifacts (reuse `retrieve.ts` ACL); extend the answer core scope if needed (depends T007)
 - [ ] T021 [US2] Enforce confirmed-decisions-only when a citation is a `decision_record` (FR-007; contracts test 4) (depends T007)
 
 **Checkpoint**: US1 + US2 both work independently.
@@ -87,10 +87,10 @@ Do not start Phase 1 tasks until G1–G3 clear.
 **Independent Test**: request a summary scoped to a topic → grounded brief; edit + reload → edited text persists as authoritative.
 
 - [ ] T022 [P] [US3] Contract test `tests/contract/falcon-summary.test.ts`: `/summary` (scoped) grounded + `PATCH /answers/{id}` edit-authoritative (contracts/api.md tests 6)
-- [ ] T023 [US3] Generalize `packages/core/src/digest.ts` → scoped summary via the answer core (topic/time scope) (depends T007)
-- [ ] T024 [US3] Routes: `POST /api/falcon/summary` + `GET /api/falcon/conversations` + `GET /api/falcon/conversations/{id}` (depends T023, T014)
-- [ ] T025 [US3] `PATCH /api/falcon/answers/{id}` → `edited_text` authoritative (mirror the Phase-1 digest edit) (depends T014)
-- [ ] T026 [US3] Panel: request summary + edit/save; conversation list/read (depends T016)
+- [x] T023 [US3] Generalize `packages/core/src/digest.ts` → scoped summary via the answer core (topic/time scope) (depends T007)
+- [x] T024 [US3] Routes: `POST /api/falcon/summary` + `GET /api/falcon/conversations` + `GET /api/falcon/conversations/{id}` (depends T023, T014)
+- [x] T025 [US3] `PATCH /api/falcon/answers/{id}` → `edited_text` authoritative (mirror the Phase-1 digest edit) (depends T014)
+- [x] T026 [US3] Panel: request summary + edit/save; conversation list/read (depends T016)
 
 **Checkpoint**: all three stories independently functional.
 
