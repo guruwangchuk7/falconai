@@ -214,6 +214,16 @@ importers:
         version: 2.1.9(@types/node@24.13.3)
 
   packages/evals:
+    dependencies:
+      '@falcon/core':
+        specifier: workspace:*
+        version: link:../core
+      '@falcon/db':
+        specifier: workspace:*
+        version: link:../db
+      '@falcon/llm':
+        specifier: workspace:*
+        version: link:../llm
     devDependencies:
       '@types/node':
         specifier: '24'

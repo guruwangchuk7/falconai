@@ -29,7 +29,7 @@ Do not start Phase 1 tasks until G1–G3 clear.
 ## Phase 1: Setup
 
 - [x] T001 [P] Create migration file `packages/db/drizzle/0002_personal_falcon.sql` (placeholder) and wire it into the `@falcon/db` migrate order after `0001_init.sql`
-- [ ] T002 [P] Scaffold the answer-grounding eval + golden-set fixtures in `packages/evals/answer/` (Constitution V)
+- [x] T002 [P] Scaffold the answer-grounding eval + golden-set fixtures in `packages/evals/answer/` (Constitution V)
 
 ---
 
@@ -43,7 +43,7 @@ Do not start Phase 1 tasks until G1–G3 clear.
 - [x] T006 [P] Define `Answer`/`Claim`/`Citation` types + Zod schema in `packages/core/src/answer.ts` (per contracts/api.md)
 - [x] T007 Implement grounded-answer core in `packages/core/src/answer.ts`: reuse `retrieve.ts` for ACL/tenant candidates → Claude Haiku (pinned version) structured claims+citations → deterministic **verify-then-drop** (claim dropped if its citation ∉ retrieved set) → `Answer` (`grounded` | `no_grounded_answer`). **Accepts prior conversation turns as context for follow-up questions (FR-011)** — earlier Q&A is included in the prompt but does NOT relax the grounding gate (follow-ups are re-grounded against freshly retrieved candidates). (depends T003, T006)
 - [x] T008 [P] Unit test `packages/core/src/answer.test.ts`: verify-then-drop removes ungrounded claims; zero survivors → `no_grounded_answer`; confirmed-decisions-only filter (depends T007)
-- [ ] T009 [P] Pin the answer model version in `packages/llm` and log answer inputs+citations for the eval (Constitution V)
+- [x] T009 [P] Pin the answer model version in `packages/llm` and log answer inputs+citations for the eval (Constitution V)
 - [x] T010 [P] Ask API scaffold `apps/web/app/api/falcon/ask/route.ts`: Auth.js session + `withTenant` wiring + rate limit (reuse `@falcon/queue` limiter) + SSE stream skeleton
 - [x] T011 [P] Falcon panel shell `apps/web/app/(dashboard)/falcon/page.tsx` + dashboard nav entry (readable answer area + citation-link component)
 
@@ -98,7 +98,7 @@ Do not start Phase 1 tasks until G1–G3 clear.
 
 ## Phase 6: Polish & Cross-Cutting
 
-- [ ] T027 [P] Run the answer-grounding eval on the golden set; must clear its bar before ship (Constitution V) (`packages/evals/answer/`)
+- [x] T027 [P] Run the answer-grounding eval on the golden set; must clear its bar before ship (Constitution V) (`packages/evals/answer/`)
 - [ ] T028 [P] Playwright authed e2e: open panel → ask → cited answer (`apps/web` e2e, extends T043 shell)
 - [x] T029 [P] Add answer/ask paths to observability (Sentry/PostHog) for error + retention visibility
 - [ ] T030 Run `quickstart.md` V1–V9 and confirm all pass
