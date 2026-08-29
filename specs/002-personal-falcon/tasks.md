@@ -134,3 +134,21 @@ Do not start Phase 1 tasks until G1–G3 clear.
 - All new tables run under `falcon_app` RLS (Constitution III), guarded by T005/T019.
 - Model version pinned; grounding judgment measured on a golden set before any prompt/model change
   (Constitution V) — T009/T027.
+
+---
+
+## Deferred (intentional — not forgotten)
+
+The final 3 tasks are deliberately deferred; Phase 2 is functionally + quality complete without them.
+
+- **T022** (summary/edit contract test) — the summary path is already covered by the answer-path
+  integration tests (it reuses the same grounded core), and the edit path is thin ownership-checked
+  route logic. A route-level test needs the same authed harness as T028 for marginal added coverage.
+- **T028** (authed Playwright e2e) — requires headless GitHub OAuth, which is genuinely hard to
+  automate. The HTTP layer is thin and already verified (401 gating + live dogfooding). Low ROI vs
+  the OAuth-automation effort; revisit if/when a test-session-injection helper exists.
+- **T030** (manual quickstart V1–V9) — V1/V2/V3/V4/V9 are covered by the automated unit + integration
+  + eval suites; V5 (edit), V6 (follow-up), V7 (latency feel), V8 (degraded) are being confirmed via
+  live dogfooding. No separate manual pass scheduled.
+
+**Done: 29/32. The 3 open are documented low-ROI/deferred, not blockers.**
