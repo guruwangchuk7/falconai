@@ -28,7 +28,7 @@ Do not start Phase 1 tasks until G1–G3 clear.
 
 ## Phase 1: Setup
 
-- [ ] T001 [P] Create migration file `packages/db/drizzle/0002_personal_falcon.sql` (placeholder) and wire it into the `@falcon/db` migrate order after `0001_init.sql`
+- [x] T001 [P] Create migration file `packages/db/drizzle/0002_personal_falcon.sql` (placeholder) and wire it into the `@falcon/db` migrate order after `0001_init.sql`
 - [ ] T002 [P] Scaffold the answer-grounding eval + golden-set fixtures in `packages/evals/answer/` (Constitution V)
 
 ---
@@ -37,15 +37,15 @@ Do not start Phase 1 tasks until G1–G3 clear.
 
 **⚠️ No user-story work begins until this phase is complete.**
 
-- [ ] T003 Add tenant-scoped entities to `packages/db/src/schema.ts`: `conversation`, `question`, `answer`, `answer_citation`, `query_event` (per data-model.md)
-- [ ] T004 Author `packages/db/drizzle/0002_personal_falcon.sql`: create the tables, `enable`/`force row level security`, `workspace_id` tenant-isolation policies, and grants to `falcon_app` (depends T003)
+- [x] T003 Add tenant-scoped entities to `packages/db/src/schema.ts`: `conversation`, `question`, `answer`, `answer_citation`, `query_event` (per data-model.md)
+- [x] T004 Author `packages/db/drizzle/0002_personal_falcon.sql`: create the tables, `enable`/`force row level security`, `workspace_id` tenant-isolation policies, and grants to `falcon_app` (depends T003)
 - [ ] T005 [P] Integration guard `tests/integration/personal-falcon-rls.test.ts`: new tables fail-closed without tenant ctx, isolate by workspace, reject mismatched-workspace inserts (extends the Phase-1 isolation suite; run as `falcon_app`)
-- [ ] T006 [P] Define `Answer`/`Claim`/`Citation` types + Zod schema in `packages/core/src/answer.ts` (per contracts/api.md)
-- [ ] T007 Implement grounded-answer core in `packages/core/src/answer.ts`: reuse `retrieve.ts` for ACL/tenant candidates → Claude Haiku (pinned version) structured claims+citations → deterministic **verify-then-drop** (claim dropped if its citation ∉ retrieved set) → `Answer` (`grounded` | `no_grounded_answer`). **Accepts prior conversation turns as context for follow-up questions (FR-011)** — earlier Q&A is included in the prompt but does NOT relax the grounding gate (follow-ups are re-grounded against freshly retrieved candidates). (depends T003, T006)
-- [ ] T008 [P] Unit test `packages/core/src/answer.test.ts`: verify-then-drop removes ungrounded claims; zero survivors → `no_grounded_answer`; confirmed-decisions-only filter (depends T007)
+- [x] T006 [P] Define `Answer`/`Claim`/`Citation` types + Zod schema in `packages/core/src/answer.ts` (per contracts/api.md)
+- [x] T007 Implement grounded-answer core in `packages/core/src/answer.ts`: reuse `retrieve.ts` for ACL/tenant candidates → Claude Haiku (pinned version) structured claims+citations → deterministic **verify-then-drop** (claim dropped if its citation ∉ retrieved set) → `Answer` (`grounded` | `no_grounded_answer`). **Accepts prior conversation turns as context for follow-up questions (FR-011)** — earlier Q&A is included in the prompt but does NOT relax the grounding gate (follow-ups are re-grounded against freshly retrieved candidates). (depends T003, T006)
+- [x] T008 [P] Unit test `packages/core/src/answer.test.ts`: verify-then-drop removes ungrounded claims; zero survivors → `no_grounded_answer`; confirmed-decisions-only filter (depends T007)
 - [ ] T009 [P] Pin the answer model version in `packages/llm` and log answer inputs+citations for the eval (Constitution V)
-- [ ] T010 [P] Ask API scaffold `apps/web/app/api/falcon/ask/route.ts`: Auth.js session + `withTenant` wiring + rate limit (reuse `@falcon/queue` limiter) + SSE stream skeleton
-- [ ] T011 [P] Falcon panel shell `apps/web/app/(dashboard)/falcon/page.tsx` + dashboard nav entry (readable answer area + citation-link component)
+- [x] T010 [P] Ask API scaffold `apps/web/app/api/falcon/ask/route.ts`: Auth.js session + `withTenant` wiring + rate limit (reuse `@falcon/queue` limiter) + SSE stream skeleton
+- [x] T011 [P] Falcon panel shell `apps/web/app/(dashboard)/falcon/page.tsx` + dashboard nav entry (readable answer area + citation-link component)
 
 **Checkpoint**: shared answer pipeline, tenant-isolated tables, API + panel shells ready.
 
@@ -58,11 +58,11 @@ Do not start Phase 1 tasks until G1–G3 clear.
 
 - [ ] T012 [P] [US1] Contract test `tests/contract/falcon-ask.test.ts`: grounded ask → every `claims[].citations[].artifactId` ∈ retrieved ACL set; ≥1 citation per rendered claim (contracts/api.md test 1)
 - [ ] T013 [P] [US1] Contract test (same file or `-negative`): no supporting artifact → `no_grounded_answer`, no fabricated text (test 2)
-- [ ] T014 [US1] Wire `/api/falcon/ask` to the answer core: stream claims, attach verified citations, persist `conversation`/`question`/`answer`/`answer_citation` via `withTenant` (depends T007, T010)
-- [ ] T015 [US1] Emit exactly one `query_event` per ask (retention, SC-005) in the ask path (depends T014)
-- [ ] T016 [US1] Panel: ask box + streamed answer + clickable citations resolving to artifact URLs (depends T011, T014)
-- [ ] T017 [US1] Surface `data_as_of` / last-synced freshness in the answer (FR-014)
-- [ ] T018 [US1] Degraded state: provider/embeddings error → honest `503` message, never a guessed answer (Constitution IV)
+- [x] T014 [US1] Wire `/api/falcon/ask` to the answer core: stream claims, attach verified citations, persist `conversation`/`question`/`answer`/`answer_citation` via `withTenant` (depends T007, T010)
+- [x] T015 [US1] Emit exactly one `query_event` per ask (retention, SC-005) in the ask path (depends T014)
+- [x] T016 [US1] Panel: ask box + streamed answer + clickable citations resolving to artifact URLs (depends T011, T014)
+- [x] T017 [US1] Surface `data_as_of` / last-synced freshness in the answer (FR-014)
+- [x] T018 [US1] Degraded state: provider/embeddings error → honest `503` message, never a guessed answer (Constitution IV)
 
 **Checkpoint**: US1 fully functional and independently testable — this is the MVP.
 

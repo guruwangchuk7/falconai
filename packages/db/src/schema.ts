@@ -117,3 +117,56 @@ export const syncRun = pgTable('sync_run', {
   error: text('error'),
   artifactsSynced: integer('artifacts_synced').notNull().default(0),
 });
+
+// ---------- Phase 2: Personal Falcon (0002_personal_falcon.sql) ----------
+
+export const conversation = pgTable('conversation', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  title: text('title'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const question = pgTable('question', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),
+  conversationId: uuid('conversation_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  text: text('text').notNull(),
+  kind: text('kind').notNull().default('qa'),          // qa | summary
+  scope: jsonb('scope'),                               // summary: { topic?, from?, to? }
+  askedAt: timestamp('asked_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const answer = pgTable('answer', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),
+  questionId: uuid('question_id').notNull(),
+  status: text('status').notNull(),                    // grounded | no_grounded_answer
+  generatedText: text('generated_text'),
+  model: text('model'),
+  modelVersion: text('model_version'),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+  editedText: text('edited_text'),
+  editedAt: timestamp('edited_at', { withTimezone: true }),
+  dataAsOf: timestamp('data_as_of', { withTimezone: true }),
+});
+
+export const answerCitation = pgTable('answer_citation', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),
+  answerId: uuid('answer_id').notNull(),
+  artifactId: uuid('artifact_id').notNull(),
+  chunkId: uuid('chunk_id'),
+  claimRef: text('claim_ref'),
+});
+
+export const queryEvent = pgTable('query_event', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  kind: text('kind').notNull().default('qa'),          // qa | summary
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+});

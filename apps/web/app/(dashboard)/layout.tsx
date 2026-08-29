@@ -12,6 +12,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       <header className="mb-8 flex items-center gap-6 border-b border-hairline pb-4">
         <span className="font-medium text-ink">Falcon</span>
         <nav className="flex gap-4 text-sm text-muted">
+          <Link href="/falcon">Ask Falcon</Link>
           <Link href="/integrations">Integrations</Link>
           <Link href="/me/digest">My digest</Link>
           <Link href="/decisions">Decisions</Link>
