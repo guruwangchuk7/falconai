@@ -100,10 +100,10 @@ Do not start Phase 1 tasks until G1–G3 clear.
 
 - [ ] T027 [P] Run the answer-grounding eval on the golden set; must clear its bar before ship (Constitution V) (`packages/evals/answer/`)
 - [ ] T028 [P] Playwright authed e2e: open panel → ask → cited answer (`apps/web` e2e, extends T043 shell)
-- [ ] T029 [P] Add answer/ask paths to observability (Sentry/PostHog) for error + retention visibility
+- [x] T029 [P] Add answer/ask paths to observability (Sentry/PostHog) for error + retention visibility
 - [ ] T030 Run `quickstart.md` V1–V9 and confirm all pass
 - [ ] T031 [P] Docs: add the Falcon Q&A surface to `START-HERE.md` / handoff; note SC-005 retention as the D1 confirm metric
-- [ ] T032 [P] Measure answer latency (SC-003): instrument time-to-first-token + time-to-complete over a representative question set; set a streaming budget and confirm median complete < ~10s (validates quickstart V7)
+- [x] T032 [P] Measure answer latency (SC-003): instrument time-to-first-token + time-to-complete over a representative question set; set a streaming budget and confirm median complete < ~10s (validates quickstart V7)
 
 ---
 

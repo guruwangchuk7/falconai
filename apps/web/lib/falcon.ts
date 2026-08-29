@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { schema } from '@falcon/db';
 import { answerQuestion } from '@falcon/core';
+import { captureEvent } from '@falcon/observability';
 import type { ActiveSession } from './session';
 import { deps } from './deps';
 
@@ -13,11 +14,13 @@ export async function runFalconTurn(
   kind: 'qa' | 'summary',
   conversationId: string | undefined,
 ) {
+  const t0 = Date.now();
   const answer = await answerQuestion(deps(), {
     workspaceId: s.workspaceId,
     requesterUserId: s.userId,
     question: questionText,
   });
+  const answerMs = Date.now() - t0; // time-to-answer (SC-003 visibility)
 
   const persisted = await deps().db.withTenant(s.workspaceId, async (tx) => {
     let convId = conversationId;
@@ -72,6 +75,10 @@ export async function runFalconTurn(
 
     return { conversationId: convId, answerId: a[0]!.id };
   });
+
+  // Usage/retention visibility (no-op unless PostHog is configured). Content is never sent —
+  // only the shape (kind, grounded?, claim count).
+  captureEvent(s.userId, `falcon_${kind}`, { status: answer.status, claims: answer.claims.length, answerMs });
 
   return {
     answerId: persisted.answerId,

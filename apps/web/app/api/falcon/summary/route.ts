@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { rateLimit } from '@falcon/queue';
+import { captureException } from '@falcon/observability';
 import { getActiveSession } from '@/lib/session';
 import { runFalconTurn } from '@/lib/falcon';
 
@@ -22,7 +23,8 @@ export async function POST(req: Request) {
   try {
     const result = await runFalconTurn(s, question, 'summary', body.conversationId);
     return NextResponse.json(result);
-  } catch {
+  } catch (e) {
+    captureException(e, { route: 'falcon/summary', userId: s.userId });
     return NextResponse.json({ error: 'Falcon is temporarily unavailable — try again in a moment.' }, { status: 503 });
   }
 }
