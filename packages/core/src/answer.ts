@@ -100,6 +100,33 @@ export function groundClaims(
   return { claims, citedIso };
 }
 
+/**
+ * Parse a natural-language time window from the question so "today / yesterday / this week / last
+ * month" actually constrain retrieval by date (not just semantics). Pure + deterministic (takes
+ * `now`). Week/month are treated as rolling windows (past 7 / 30 days) — good enough for a work
+ * assistant and avoids calendar-boundary ambiguity. Returns {} when no time phrase is present.
+ */
+export function parseTimeWindow(question: string, now: Date): { since?: string; until?: string } {
+  const q = question.toLowerCase();
+  const startOfUTCDay = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayMs = 86_400_000;
+  const todayStart = startOfUTCDay(now);
+
+  if (/\byesterday\b/.test(q)) {
+    return { since: new Date(todayStart.getTime() - dayMs).toISOString(), until: todayStart.toISOString() };
+  }
+  if (/\btoday\b/.test(q)) {
+    return { since: todayStart.toISOString(), until: now.toISOString() };
+  }
+  if (/\b(this|past|last)\s+(week)\b|\blast\s+7\s+days\b/.test(q)) {
+    return { since: new Date(now.getTime() - 7 * dayMs).toISOString(), until: now.toISOString() };
+  }
+  if (/\b(this|past|last)\s+(month)\b|\blast\s+30\s+days\b/.test(q)) {
+    return { since: new Date(now.getTime() - 30 * dayMs).toISOString(), until: now.toISOString() };
+  }
+  return {};
+}
+
 export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promise<Answer> {
   const model = deps.llm.chat.model;
   const base: Pick<Answer, 'model' | 'modelVersion'> = { model, modelVersion: model };
@@ -108,11 +135,15 @@ export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promis
   });
 
   // 1. Retrieve ACL/tenant-scoped candidates (the only source of truth for grounding).
+  //    A time phrase in the question ("today", "this week") constrains by date, not just semantics.
+  const window = parseTimeWindow(input.question, new Date());
   const { items, degraded } = await retrieve(deps, {
     workspaceId: input.workspaceId,
     requesterUserId: input.requesterUserId,
     query: input.question,
     k: input.k ?? 8,
+    ...(window.since ? { since: window.since } : {}),
+    ...(window.until ? { until: window.until } : {}),
   });
   if (items.length === 0) return noAnswer(degraded);
 

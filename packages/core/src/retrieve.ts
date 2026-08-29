@@ -1,4 +1,4 @@
-import { and, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, lt, or, sql } from 'drizzle-orm';
 import { schema, type TenantTx } from '@falcon/db';
 import { EMBEDDING_MODEL } from '@falcon/llm';
 import type { CoreDeps } from './deps.js';
@@ -11,6 +11,10 @@ export interface RetrieveInput {
   sources?: ('github' | 'linear' | 'jira')[];
   /** Override the requester's accessible repo/project tags (else derived from their artifacts). */
   accessibleTags?: string[];
+  /** Optional time window on the artifact's source-updated time (ISO). Lets "today / this week /
+   *  last month" actually constrain results by date, not just semantics. */
+  since?: string;
+  until?: string;
 }
 
 export interface RetrievedItem {
@@ -62,6 +66,10 @@ export async function retrieve(deps: CoreDeps, input: RetrieveInput): Promise<Re
     if (input.sources && input.sources.length > 0) {
       conds.push(inArray(schema.artifact.source, input.sources));
     }
+    // Date window: constrain by the artifact's source-updated time (rows with a null timestamp
+    // are excluded when a window is set — an undated artifact can't satisfy "today").
+    if (input.since) conds.push(gte(schema.artifact.sourceUpdatedAt, new Date(input.since)));
+    if (input.until) conds.push(lt(schema.artifact.sourceUpdatedAt, new Date(input.until)));
 
     const rows = await tx
       .select({

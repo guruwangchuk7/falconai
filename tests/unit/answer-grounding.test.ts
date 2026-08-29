@@ -1,6 +1,29 @@
 import { describe, it, expect } from 'vitest';
-import { parseClaims, groundClaims } from '@falcon/core';
+import { parseClaims, groundClaims, parseTimeWindow } from '@falcon/core';
 import type { RetrievedItem } from '@falcon/core';
+
+describe('parseTimeWindow', () => {
+  const now = new Date('2026-08-29T10:00:00.000Z');
+  it('today → from midnight UTC to now', () => {
+    expect(parseTimeWindow('what did I do today?', now)).toEqual({
+      since: '2026-08-29T00:00:00.000Z', until: '2026-08-29T10:00:00.000Z',
+    });
+  });
+  it('yesterday → the prior UTC day', () => {
+    expect(parseTimeWindow('anything from yesterday?', now)).toEqual({
+      since: '2026-08-28T00:00:00.000Z', until: '2026-08-29T00:00:00.000Z',
+    });
+  });
+  it('this week → rolling 7 days', () => {
+    expect(parseTimeWindow('what did I finish this week', now).since).toBe('2026-08-22T10:00:00.000Z');
+  });
+  it('last month → rolling 30 days', () => {
+    expect(parseTimeWindow('summarize last month', now).since).toBe('2026-07-30T10:00:00.000Z');
+  });
+  it('no time phrase → empty window', () => {
+    expect(parseTimeWindow('what did I do for authentication?', now)).toEqual({});
+  });
+});
 
 // Pure grounding-gate tests (Constitution II / spec 002-personal-falcon T008). No DB/LLM.
 
