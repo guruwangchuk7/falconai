@@ -13,9 +13,14 @@ const deps: CoreDeps = { db: getDb(), llm: createLlmProviders() };
 const secrets = createSecretStore();
 const connection = conn();
 
+// Index fans out one embedding call per artifact. On Voyage's free tier (3 RPM) a high fan-out
+// causes 429 bursts — the provider now retries with backoff, but low-throughput deployments can
+// also cap concurrency via INDEX_CONCURRENCY (default 8) to reduce wasted retries.
+const indexConcurrency = Number(process.env.INDEX_CONCURRENCY) || 8;
+
 const workers = [
   new Worker<SyncJob>('sync', (job) => handleSync(deps, secrets, job.data), { connection, concurrency: 4 }),
-  new Worker<IndexJob>('index', (job) => handleIndex(deps, job.data), { connection, concurrency: 8 }),
+  new Worker<IndexJob>('index', (job) => handleIndex(deps, job.data), { connection, concurrency: indexConcurrency }),
   new Worker<DigestJob>('digest', (job) => handleDigest(deps, job.data), { connection, concurrency: 4 }),
   new Worker('maintenance', async (job) => {
     if (job.name === 'poll-sync') await pollAll(deps);
