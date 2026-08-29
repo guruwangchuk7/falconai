@@ -102,7 +102,7 @@ Do not start Phase 1 tasks until G1–G3 clear.
 - [ ] T028 [P] Playwright authed e2e: open panel → ask → cited answer (`apps/web` e2e, extends T043 shell)
 - [x] T029 [P] Add answer/ask paths to observability (Sentry/PostHog) for error + retention visibility
 - [ ] T030 Run `quickstart.md` V1–V9 and confirm all pass
-- [ ] T031 [P] Docs: add the Falcon Q&A surface to `START-HERE.md` / handoff; note SC-005 retention as the D1 confirm metric
+- [x] T031 [P] Docs: add the Falcon Q&A surface to `START-HERE.md` / handoff; note SC-005 retention as the D1 confirm metric
 - [x] T032 [P] Measure answer latency (SC-003): instrument time-to-first-token + time-to-complete over a representative question set; set a streaming budget and confirm median complete < ~10s (validates quickstart V7)
 
 ---
