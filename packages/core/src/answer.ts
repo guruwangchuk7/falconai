@@ -1,6 +1,7 @@
 import type { ChatMessage } from '@falcon/llm';
 import type { CoreDeps } from './deps.js';
 import { retrieve, type RetrievedItem } from './retrieve.js';
+import { searchDecisions } from './decisions.js';
 
 /**
  * Personal Falcon — grounded Q&A (Phase 2, spec 002-personal-falcon).
@@ -137,7 +138,7 @@ export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promis
   // 1. Retrieve ACL/tenant-scoped candidates (the only source of truth for grounding).
   //    A time phrase in the question ("today", "this week") constrains by date, not just semantics.
   const window = parseTimeWindow(input.question, new Date());
-  const { items, degraded } = await retrieve(deps, {
+  const { items: artifactItems, degraded } = await retrieve(deps, {
     workspaceId: input.workspaceId,
     requesterUserId: input.requesterUserId,
     query: input.question,
@@ -145,6 +146,28 @@ export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promis
     ...(window.since ? { since: window.since } : {}),
     ...(window.until ? { until: window.until } : {}),
   });
+
+  // Confirmed decisions are also citable candidates (FR-007: only CONFIRMED records are
+  // retrievable — searchDecisions enforces this). Skip when the question is time-scoped to the
+  // user's own recent activity ("today"), where org decisions aren't what's being asked.
+  const items: RetrievedItem[] = [...artifactItems];
+  if (!window.since) {
+    const decisions = await searchDecisions(deps, input.workspaceId, input.question, 4);
+    for (const d of decisions) {
+      items.push({
+        artifactId: d.id,
+        type: 'decision',
+        externalRef: 'decision',
+        title: d.title,
+        snippet: d.decision ?? d.title,
+        score: d.score,
+        trustTier: 'trusted',
+        lastSyncedAt: d.createdAt,
+        isStale: d.freshnessFlag,
+      });
+    }
+  }
+
   if (items.length === 0) return noAnswer(degraded);
 
   // 2. Generate structured claims that cite candidate numbers.

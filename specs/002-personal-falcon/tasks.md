@@ -56,8 +56,8 @@ Do not start Phase 1 tasks until G1–G3 clear.
 **Goal**: A user privately asks about their own work and gets a grounded, cited answer.
 **Independent Test**: single user asks "what did I do for auth?" → cited answer resolves to real artifacts; a no-source question → honest "no grounded answer."
 
-- [ ] T012 [P] [US1] Contract test `tests/contract/falcon-ask.test.ts`: grounded ask → every `claims[].citations[].artifactId` ∈ retrieved ACL set; ≥1 citation per rendered claim (contracts/api.md test 1)
-- [ ] T013 [P] [US1] Contract test (same file or `-negative`): no supporting artifact → `no_grounded_answer`, no fabricated text (test 2)
+- [x] T012 [P] [US1] Contract test `tests/contract/falcon-ask.test.ts`: grounded ask → every `claims[].citations[].artifactId` ∈ retrieved ACL set; ≥1 citation per rendered claim (contracts/api.md test 1)
+- [x] T013 [P] [US1] Contract test (same file or `-negative`): no supporting artifact → `no_grounded_answer`, no fabricated text (test 2)
 - [x] T014 [US1] Wire `/api/falcon/ask` to the answer core: stream claims, attach verified citations, persist `conversation`/`question`/`answer`/`answer_citation` via `withTenant` (depends T007, T010)
 - [x] T015 [US1] Emit exactly one `query_event` per ask (retention, SC-005) in the ask path (depends T014)
 - [x] T016 [US1] Panel: ask box + streamed answer + clickable citations resolving to artifact URLs (depends T011, T014)
@@ -73,9 +73,9 @@ Do not start Phase 1 tasks until G1–G3 clear.
 **Goal**: Access-scoped team-context Q&A ("what happened with Feature X?").
 **Independent Test**: user asks about accessible team work → cited answer; inaccessible artifact → never cited; another user's conversation → 404.
 
-- [ ] T019 [P] [US2] Integration test `tests/integration/falcon-acl.test.ts`: accessible team artifact cited; inaccessible artifact never surfaced; cross-user conversation read → 404 (contracts/api.md test 3)
+- [x] T019 [P] [US2] Integration test `tests/integration/falcon-acl.test.ts`: accessible team artifact cited; inaccessible artifact never surfaced; cross-user conversation read → 404 (contracts/api.md test 3)
 - [x] T020 [US2] Confirm team-scope retrieval draws only from ACL-visible artifacts (reuse `retrieve.ts` ACL); extend the answer core scope if needed (depends T007)
-- [ ] T021 [US2] Enforce confirmed-decisions-only when a citation is a `decision_record` (FR-007; contracts test 4) (depends T007)
+- [x] T021 [US2] Enforce confirmed-decisions-only when a citation is a `decision_record` (FR-007; contracts test 4) (depends T007)
 
 **Checkpoint**: US1 + US2 both work independently.
 
