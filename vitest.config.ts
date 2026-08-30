@@ -15,6 +15,11 @@ export default defineConfig({
       '@falcon/llm': fileURLToPath(new URL('./packages/llm/src/index.ts', import.meta.url)),
       '@falcon/config': fileURLToPath(new URL('./packages/config/src/index.ts', import.meta.url)),
       '@falcon/integrations': fileURLToPath(new URL('./packages/integrations/src/index.ts', import.meta.url)),
+      // Alias these so vi.mock() can intercept them reliably: under pnpm's symlinked store an
+      // un-aliased workspace specifier resolves to a path vi.mock can't match (route tests mock them).
+      '@falcon/queue': fileURLToPath(new URL('./packages/queue/src/index.ts', import.meta.url)),
+      '@falcon/observability': fileURLToPath(new URL('./packages/observability/src/index.ts', import.meta.url)),
+      '@falcon/secrets': fileURLToPath(new URL('./packages/secrets/src/index.ts', import.meta.url)),
       // apps/web tsconfig path ("@/*" → "./*"); lets tests exercise the real Next route handlers.
       '@': fileURLToPath(new URL('./apps/web', import.meta.url)),
     },
