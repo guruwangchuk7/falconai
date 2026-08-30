@@ -47,8 +47,8 @@ export default async function globalSetup() {
   // Seed one tenant: workspace A, user UA, and one auth-related artifact + embedded chunk UA owns.
   await tdb.admin`insert into workspace ${tdb.admin({ id: A, name: 'A', settings: {} }, 'id', 'name', 'settings')}`;
   await tdb.admin`insert into "user" ${tdb.admin({ id: UA, email: 'e2e@x.com' }, 'id', 'email')}`;
-  await tdb.admin`insert into artifact (id, workspace_id, user_id, source, external_ref, type, title, acl_tags, trust_tier, source_updated_at, last_synced_at)
-    values (${ART}, ${A}, ${UA}, 'github', 'sha1', 'commit', 'auth commit', '["repo-a"]'::jsonb, 'trusted', now(), now())`;
+  await tdb.admin`insert into artifact (id, workspace_id, user_id, source, external_ref, type, title, repo_or_project, acl_tags, trust_tier, source_updated_at, last_synced_at)
+    values (${ART}, ${A}, ${UA}, 'github', 'sha1', 'commit', 'auth commit', 'octo/repo-a', '["repo-a"]'::jsonb, 'trusted', now(), now())`;
   await tdb.admin`insert into artifact_chunk (workspace_id, artifact_id, chunk_index, content, trust_tier, embedding, embedding_model, embedding_version)
     values (${A}, ${ART}, 0, 'implemented the GitHub auth callback', 'trusted', ${VEC}::vector, ${EMBEDDING_MODEL}, ${EMBEDDING_VERSION})`;
 

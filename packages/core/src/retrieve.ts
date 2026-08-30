@@ -22,6 +22,8 @@ export interface RetrievedItem {
   type: string;
   externalRef: string; // provenance the caller can cite
   title: string | null;
+  source: string; // github | linear | jira — used to build an openable citation URL
+  repoOrProject: string | null; // e.g. "owner/repo" — the other half of the URL
   snippet: string;
   score: number;
   trustTier: 'trusted' | 'mixed' | 'untrusted';
@@ -77,6 +79,8 @@ export async function retrieve(deps: CoreDeps, input: RetrieveInput): Promise<Re
         type: schema.artifact.type,
         externalRef: schema.artifact.externalRef,
         title: schema.artifact.title,
+        source: schema.artifact.source,
+        repoOrProject: schema.artifact.repoOrProject,
         snippet: schema.artifactChunk.content,
         trustTier: schema.artifactChunk.trustTier,
         lastSyncedAt: schema.artifact.lastSyncedAt,
@@ -105,6 +109,8 @@ export async function retrieve(deps: CoreDeps, input: RetrieveInput): Promise<Re
         type: r.type,
         externalRef: r.externalRef,
         title: r.title,
+        source: r.source,
+        repoOrProject: r.repoOrProject,
         snippet: r.snippet,
         score: Number(r.score),
         trustTier: r.trustTier as RetrievedItem['trustTier'],

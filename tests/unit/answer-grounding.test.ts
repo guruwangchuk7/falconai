@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseClaims, groundClaims, parseTimeWindow } from '@falcon/core';
+import { parseClaims, groundClaims, parseTimeWindow, citationUrl } from '@falcon/core';
 import type { RetrievedItem } from '@falcon/core';
 
 describe('parseTimeWindow', () => {
@@ -32,6 +32,8 @@ const item = (i: number): RetrievedItem => ({
   type: 'commit',
   externalRef: `sha${i}`,
   title: `t${i}`,
+  source: 'github',
+  repoOrProject: `owner/repo${i}`,
   snippet: `s${i}`,
   score: 0.1,
   trustTier: 'trusted',
@@ -83,5 +85,29 @@ describe('groundClaims (verify-then-drop)', () => {
   it('reports cited sync timestamps for freshness', () => {
     const { citedIso } = groundClaims([{ text: 'a', citations: [1, 3] }], items);
     expect(citedIso.sort().at(-1)).toBe('2026-08-23T00:00:00.000Z');
+  });
+
+  it('attaches an openable citation URL when the source resolves', () => {
+    const { claims } = groundClaims([{ text: 'did X', citations: [1] }], items);
+    expect(claims[0]!.citations[0]!.url).toBe('https://github.com/owner/repo1/commit/sha1');
+  });
+});
+
+describe('citationUrl', () => {
+  it('builds a GitHub commit URL', () => {
+    expect(citationUrl({ source: 'github', repoOrProject: 'o/r', type: 'commit', externalRef: 'abc123' }))
+      .toBe('https://github.com/o/r/commit/abc123');
+  });
+  it('builds a GitHub PR URL and strips the leading #', () => {
+    expect(citationUrl({ source: 'github', repoOrProject: 'o/r', type: 'pr', externalRef: '#482' }))
+      .toBe('https://github.com/o/r/pull/482');
+  });
+  it('falls back to the repo root for other GitHub types', () => {
+    expect(citationUrl({ source: 'github', repoOrProject: 'o/r', type: 'review_comment', externalRef: 'rc-9' }))
+      .toBe('https://github.com/o/r');
+  });
+  it('returns null when the source has no resolvable URL', () => {
+    expect(citationUrl({ source: 'jira', repoOrProject: 'PROJ', type: 'issue', externalRef: 'PROJ-1' })).toBeNull();
+    expect(citationUrl({ source: 'github', repoOrProject: null, type: 'commit', externalRef: 'x' })).toBeNull();
   });
 });

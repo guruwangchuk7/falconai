@@ -20,8 +20,16 @@ test('authed: ask Falcon → a grounded, cited answer renders', async ({ page, c
 
   // Grounded claim renders...
   await expect(page.getByText('You implemented the GitHub auth callback.')).toBeVisible({ timeout: 30_000 });
-  // ...with its provenance chip (type + external ref of the cited artifact).
-  await expect(page.getByText('commit sha1')).toBeVisible();
+  // ...with its provenance as an OPENABLE link (type + external ref → the real GitHub commit URL).
+  const citation = page.getByRole('link', { name: 'commit sha1' });
+  await expect(citation).toBeVisible();
+  await expect(citation).toHaveAttribute('href', 'https://github.com/octo/repo-a/commit/sha1');
+
+  // History view: the conversation we just created is listed and opens to show the turn.
+  await page.getByRole('button', { name: 'History' }).click();
+  await page.getByRole('button', { name: /what did I do for auth/ }).click();
+  await expect(page.getByText('You asked:')).toBeVisible();
+  await expect(page.getByText('You implemented the GitHub auth callback.')).toBeVisible();
 });
 
 test('unauthed: the ask API refuses without a session (401)', async ({ request }) => {

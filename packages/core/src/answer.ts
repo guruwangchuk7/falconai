@@ -17,6 +17,22 @@ export interface Citation {
   externalRef: string; // provenance the user can open (e.g. "#482", commit sha)
   title: string | null;
   type: string;
+  url: string | null; // openable link to the source (null when not resolvable → UI shows a label)
+}
+
+/** Build an openable provenance URL from an artifact's source + repo/project + ref, so a citation
+ *  is a real link, not just a label. Returns null when the source can't be resolved to a public URL
+ *  (e.g. Linear/Jira, whose workspace/base URL isn't stored) — the UI falls back to a plain label. */
+export function citationUrl(
+  it: Pick<RetrievedItem, 'source' | 'repoOrProject' | 'type' | 'externalRef'>,
+): string | null {
+  if (it.source === 'github' && it.repoOrProject) {
+    const base = `https://github.com/${it.repoOrProject}`;
+    if (it.type === 'pr') return `${base}/pull/${it.externalRef.replace(/^#/, '')}`;
+    if (it.type === 'commit') return `${base}/commit/${it.externalRef}`;
+    return base; // review_comment / other → repo root (best available)
+  }
+  return null;
 }
 
 export interface Claim {
@@ -93,7 +109,7 @@ export function groundClaims(
     for (const n of c.citations) {
       const it = items[n - 1]; // 1-indexed candidate numbers
       if (!it) continue; // citation not in retrieved set → drop it
-      citations.push({ artifactId: it.artifactId, externalRef: it.externalRef, title: it.title, type: it.type });
+      citations.push({ artifactId: it.artifactId, externalRef: it.externalRef, title: it.title, type: it.type, url: citationUrl(it) });
       citedIso.push(it.lastSyncedAt);
     }
     if (c.text.trim() && citations.length > 0) claims.push({ text: c.text.trim(), citations });
@@ -158,6 +174,8 @@ export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promis
         artifactId: d.id,
         type: 'decision',
         externalRef: 'decision',
+        source: 'decision', // not a URL-bearing source → citationUrl returns null (label only)
+        repoOrProject: null,
         title: d.title,
         snippet: d.decision ?? d.title,
         score: d.score,
