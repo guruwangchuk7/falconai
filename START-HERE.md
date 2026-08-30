@@ -101,13 +101,15 @@ running. **Try it:** sign in → **Ask Falcon** in the nav (`/falcon`). Ask abou
 ("what did I do for authentication?") or **Summarize a topic**; every claim shows its source, and
 if Falcon can't ground an answer it says so. You can **edit** any answer — your version wins.
 
-- Spec/plan/tasks: `specs/002-personal-falcon/` (30/32 tasks done). Grounding gate + RLS on the new
-  tables are covered by automated tests (`tests/unit/answer-grounding.test.ts`,
-  `tests/integration/personal-falcon-rls.test.ts`, `tests/integration/answer.test.ts`), and the
-  summary + edit-authoritative + ownership routes now have a handler-level contract test
-  (`tests/contract/falcon-summary.test.ts`, run in the CI integration job).
+- Spec/plan/tasks: `specs/002-personal-falcon/` (31/32 tasks done). Automated coverage: grounding
+  gate + RLS on the new tables (`tests/unit/answer-grounding.test.ts`,
+  `tests/integration/personal-falcon-rls.test.ts`, `tests/integration/answer.test.ts`); the summary
+  + edit-authoritative + ownership routes (`tests/contract/falcon-summary.test.ts`); and a full
+  **authed browser e2e** (`apps/web/e2e/falcon.e2e.spec.ts`) — sign-in → ask → grounded cited answer,
+  running keyless against testcontainer Postgres+Redis. All green in CI.
 - **Success metric to watch:** solo retention (do you/testers come back to ask?) — this is the
   second half of the D1 trigger; a strong read confirms building toward the Coordinator.
-- Still open (2): **T028** authed Playwright e2e — needs a test-env-only session-injection seam in
-  `getActiveSession` (a production auth-path change; held for an explicit go); and **T030** the
-  manual quickstart V1–V9 feel pass — needs your machine + live creds.
+- Still open (1): **T030** — the subjective quickstart feel-pass (V6 follow-up, V7 latency, V8
+  degraded). Everything code-side is done + verified; this one just wants you at the app with live
+  creds. To run the authed e2e yourself: `pnpm --filter @falcon/web e2e:auth` (needs Docker +
+  `npx playwright install chromium`).

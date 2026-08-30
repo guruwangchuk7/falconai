@@ -1,8 +1,11 @@
 # T028 — authed Playwright e2e: build plan
 
-**Status:** planned, not built. This is the one Phase-2 task that can only be *validated* in a
-Docker/CI environment or on Guru's machine — writing it blind (never executed once) would land a
-red/flaky test and corrupt CI signal, so it's specced here instead of committed half-done.
+**Status: ✅ BUILT + VERIFIED GREEN** (both options below were resolved during the build). Kept as
+the design record. Implementation: `apps/web/e2e/falcon.e2e.spec.ts`, `apps/web/e2e/global-setup.ts`,
+`apps/web/e2e/support/{session,fixture}.ts`, `apps/web/playwright.e2e.config.ts`, the non-prod
+`FALCON_FAKE_LLM` seam in `apps/web/lib/deps.ts` + `apps/web/lib/fake-llm.ts`, and the CI `e2e` job.
+Chosen path: **signed-cookie auth** (§1, zero prod change) + **offline fake-LLM seam** (§3 option b).
+Run: `pnpm --filter @falcon/web e2e:auth` (Docker + `npx playwright install chromium`).
 
 **Goal (from tasks.md):** open the Falcon panel → ask → see a grounded, cited answer, as a
 signed-in user, driving the real Next server end-to-end. Extends the T043 smoke shell

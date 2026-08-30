@@ -99,7 +99,7 @@ Do not start Phase 1 tasks until G1–G3 clear.
 ## Phase 6: Polish & Cross-Cutting
 
 - [x] T027 [P] Run the answer-grounding eval on the golden set; must clear its bar before ship (Constitution V) (`packages/evals/answer/`)
-- [ ] T028 [P] Playwright authed e2e: open panel → ask → cited answer (`apps/web` e2e, extends T043 shell)
+- [x] T028 [P] Playwright authed e2e: open panel → ask → cited answer (`apps/web` e2e, extends T043 shell). Built + **verified green** (`apps/web/e2e/falcon.e2e.spec.ts`): `global-setup.ts` boots pgvector Postgres + Redis (Testcontainers) and `next dev` with an offline `FALCON_FAKE_LLM` seam; auth via a **properly-signed minted Auth.js cookie** (zero prod auth change); drives sign-in → `/falcon` → ask → grounded cited answer, + unauth 401. Runs keyless/deterministic; wired into CI as the `e2e` job. `pnpm --filter @falcon/web e2e:auth`.
 - [x] T029 [P] Add answer/ask paths to observability (Sentry/PostHog) for error + retention visibility
 - [ ] T030 Run `quickstart.md` V1–V9 and confirm all pass
 - [x] T031 [P] Docs: add the Falcon Q&A surface to `START-HERE.md` / handoff; note SC-005 retention as the D1 confirm metric
@@ -146,14 +146,14 @@ Do not start Phase 1 tasks until G1–G3 clear.
   (`tsconfig.web-tests.json`) because the Node/NodeNext tests project can't typecheck apps/web
   handlers — that's now wired into CI (`pnpm typecheck:web-tests`). The DB assertions execute in the
   CI integration job (Docker) — not observable locally without Docker.
-- **T028** (authed Playwright e2e) — still open; **actionable build plan in `T028-e2e-plan.md`.**
-  Preferred design mints a properly-signed Auth.js cookie (zero prod change) — no `getActiveSession`
-  backdoor needed. The real blockers are environment-bound: a seeded DB + a deterministic LLM in the
-  running server (needs live creds or a small non-prod `FALCON_FAKE_LLM` seam). Only validatable in
-  Docker/CI or on Guru's machine, so it's specced rather than landed blind. The route HTTP contract
-  is already covered by T022's handler-level test.
-- **T030** (manual quickstart V1–V9) — V1/V2/V3/V4/V9 covered by the automated unit + integration +
-  eval suites (now + T022); V5 (edit) is additionally covered by T022; V6/V7/V8 confirmed via live
-  dogfooding. Needs your machine + live creds for the manual feel pass.
+- **T028** (authed Playwright e2e) — ✅ **DONE + verified green** (design in `T028-e2e-plan.md`).
+  Built exactly the preferred design: a properly-signed minted Auth.js cookie (zero prod auth
+  change), a testcontainer Postgres + Redis, and `next dev` behind a non-prod `FALCON_FAKE_LLM` seam
+  so the ask → grounded-cited-answer flow runs deterministically with no API keys. Passes locally
+  (with and without `.env.local`) and is wired into CI as the `e2e` job.
+- **T030** (manual quickstart V1–V9) — the only remaining task. V1/V2/V3/V4/V9 covered by the
+  automated unit + integration + eval suites; V1 (ask) also by the T028 e2e; V5 (edit) by T022. V6
+  (follow-up), V7 (latency feel), V8 (degraded feel) are the subjective passes that want your machine
+  + live creds. Nothing code-side blocks it.
 
-**Done: 30/32. T028 (auth-path change, needs a go) + T030 (needs your live machine) remain.**
+**Done: 31/32. Only T030 remains (a subjective feel-pass on your machine — not codeable here).**

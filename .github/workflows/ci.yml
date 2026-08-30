@@ -42,6 +42,23 @@ jobs:
       - name: Integration guards (Testcontainers pgvector)
         run: pnpm test:integration
 
+  e2e:
+    # T028: authed Personal Falcon e2e. global-setup boots pgvector Postgres + Redis (Testcontainers)
+    # and `next dev` with the offline FALCON_FAKE_LLM seam, then Playwright drives a signed-in ask →
+    # grounded cited answer. Deterministic + keyless; ubuntu ships Docker.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: pnpm --filter @falcon/web exec playwright install --with-deps chromium
+      - name: Authed e2e (Testcontainers + next dev)
+        run: pnpm --filter @falcon/web e2e:auth
+
   no-token-in-db:
     # T042 gate: OAuth tokens live in the dedicated secrets store, NEVER the app DB (R26). Fail the
     # build if any app-DB column looks like a raw token holder (secret_ref is the only allowed link).

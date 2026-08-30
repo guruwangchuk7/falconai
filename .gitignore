@@ -38,6 +38,11 @@ Thumbs.db
 coverage/
 *.tsbuildinfo
 
+# Playwright artifacts
+test-results/
+playwright-report/
+.playwright/
+
 # Editor
 .vscode/
 .idea/

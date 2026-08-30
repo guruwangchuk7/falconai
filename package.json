@@ -15,6 +15,7 @@
   },
   "devDependencies": {
     "@testcontainers/postgresql": "10.13.2",
+    "testcontainers": "10.28.0",
     "@types/node": "24",
     "drizzle-orm": "0.36.4",
     "postgres": "3.4.5",

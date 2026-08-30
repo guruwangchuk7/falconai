@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:auth": "playwright test -c playwright.e2e.config.ts"
   },
   "dependencies": {
     "@falcon/config": "workspace:*",
