@@ -43,6 +43,9 @@ test-results/
 playwright-report/
 .playwright/
 
+# Static-host staging copy of the landing page (source of truth is design/landing.html)
+site/
+
 # Editor
 .vscode/
 .idea/
