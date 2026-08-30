@@ -101,7 +101,7 @@ Do not start Phase 1 tasks until G1–G3 clear.
 - [x] T027 [P] Run the answer-grounding eval on the golden set; must clear its bar before ship (Constitution V) (`packages/evals/answer/`)
 - [x] T028 [P] Playwright authed e2e: open panel → ask → cited answer (`apps/web` e2e, extends T043 shell). Built + **verified green** (`apps/web/e2e/falcon.e2e.spec.ts`): `global-setup.ts` boots pgvector Postgres + Redis (Testcontainers) and `next dev` with an offline `FALCON_FAKE_LLM` seam; auth via a **properly-signed minted Auth.js cookie** (zero prod auth change); drives sign-in → `/falcon` → ask → grounded cited answer, + unauth 401. Runs keyless/deterministic; wired into CI as the `e2e` job. `pnpm --filter @falcon/web e2e:auth`.
 - [x] T029 [P] Add answer/ask paths to observability (Sentry/PostHog) for error + retention visibility
-- [ ] T030 Run `quickstart.md` V1–V9 and confirm all pass
+- [x] T030 Run `quickstart.md` V1–V9 and confirm all pass — live feel-pass done on real synced GitHub work (`T030-quickstart-results.md`). V1/V2/V5/V6 confirmed on real data; **SC-005 solo-retention read = STRONG YES** (Guru would use it weekly). Surfaced two UI gaps (citations not clickable; no history view) — both fixed + verified in the same pass.
 - [x] T031 [P] Docs: add the Falcon Q&A surface to `START-HERE.md` / handoff; note SC-005 retention as the D1 confirm metric
 - [x] T032 [P] Measure answer latency (SC-003): instrument time-to-first-token + time-to-complete over a representative question set; set a streaming budget and confirm median complete < ~10s (validates quickstart V7)
 
@@ -156,4 +156,6 @@ Do not start Phase 1 tasks until G1–G3 clear.
   (follow-up), V7 (latency feel), V8 (degraded feel) are the subjective passes that want your machine
   + live creds. Nothing code-side blocks it.
 
-**Done: 31/32. Only T030 remains (a subjective feel-pass on your machine — not codeable here).**
+**Done: 32/32.** T030 completed via a live feel-pass on real data (strong solo-retention read). The
+pass also drove two UI polish fixes — clickable citations + a conversation history view (with a new
+`GET /conversations/{id}` route) — both verified by unit + e2e. Phase 2 is complete.
