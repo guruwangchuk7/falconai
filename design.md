@@ -128,10 +128,12 @@ across the whole site.
 
 ### Copy — do not rewrite
 All headline, body, feature, pricing, founder-quote, and footer copy is intentional and
-should be migrated **verbatim**. Notably: "An AI teammate for every meeting.", the
-text-only / never-speaks framing, the "Reads the work / Surfaces the gap" marble caption,
-the Solo/Team/Enterprise/Pilot tier text, and Guru Wangchuk's founder quote ("Founder,
-building in Bhutan").
+should be migrated **verbatim**. **Note (PRD v2.9, D1 applied):** the *lead* copy was
+deliberately repositioned personal-first — headline is now "An AI that remembers everything
+you've shipped." and the differentiator leads with the personal agent (mediation as the
+earned expansion). Preserve verbatim from here forward. Still intentional and unchanged:
+the "Reads the work / Surfaces the gap" marble caption, the Solo/Team/Enterprise/Pilot tier
+text, and Guru Wangchuk's founder quote ("Founder, building in Bhutan").
 
 ### Migration checklist (marketing site → Next.js, when approved)
 1. Port `:root` tokens into `globals.css` / Tailwind theme; keep variable names.
@@ -156,7 +158,7 @@ building in Bhutan").
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Falcon — an AI teammate for every meeting</title>
+<title>Falcon — a personal AI that remembers your work</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -535,13 +537,13 @@ a{ color:inherit; text-decoration:none; }
   <section class="hero wrap">
     <div class="hero-grid">
       <div>
-        <h1 class="display-mega">An AI teammate<br>for every meeting.</h1>
-        <p class="lede">Falcon gives each person in a meeting an AI that has read everything they shipped this sprint — and quietly surfaces what the room is missing, while the decision is still open.</p>
+        <h1 class="display-mega">An AI that remembers<br>everything you've shipped.</h1>
+        <p class="lede">Falcon reads your PRs, issues, and decisions — then hands you the exact context you need, grounded in the real source, the moment you need it. For standups, reviews, and handoffs now; for the meeting itself as your team grows in.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#waitlist">Join the waitlist</a>
           <a class="btn btn-outline" href="#how">See how it works</a>
         </div>
-        <p class="hero-note">Text-only. Falcon never speaks in your meeting — it writes to a private panel.</p>
+        <p class="hero-note">Private by default. Every claim shows its source — and if Falcon can't ground it, it says so.</p>
       </div>
       <div>
         <!-- the ONE grainy marble featured surface, spent here -->
@@ -583,7 +585,7 @@ a{ color:inherit; text-decoration:none; }
     <div class="sec-head">
       <div class="eyebrow caption-upper">The problem</div>
       <h2 class="display-lg">The person who knows the answer<br>can't always recall it in the moment.</h2>
-      <p>The PM proposes a feature without knowing an engineer already shipped half of it. The same architecture debate gets re-litigated every quarter because nobody wrote down why. The value was highest <em>during</em> the meeting — and every tool today only summarises after it's over.</p>
+      <p>You shipped it weeks ago — the PR, the ticket, the reason — and now you can't quite recall the detail you need for standup, the review, or the handoff. The knowledge is yours; it's just not at hand. Every tool today summarises meetings <em>after</em> they're over — none of them hand you your own work the moment you need it.</p>
     </div>
   </section>
 
@@ -655,8 +657,8 @@ a{ color:inherit; text-decoration:none; }
   <section class="band wrap" id="why-falcon">
     <div class="sec-head">
       <div class="eyebrow caption-upper">Why Falcon is different</div>
-      <h2 class="display-lg">Everyone else builds a personal assistant.<br>Falcon builds one for the whole room.</h2>
-      <p class="diff-sub">Note-takers summarise what one person heard, after the meeting's over. Falcon pairs everyone's context into a shared session — so it can surface what the room is missing, while the decision is still open.</p>
+      <h2 class="display-lg">A personal AI that actually knows your work —<br>that grows into the whole room.</h2>
+      <p class="diff-sub">Note-takers summarise what one person heard, after the meeting's over. Falcon remembers what you shipped and hands it back the moment you need it — then, as your team pairs in, brings that same grounded context to the room.</p>
     </div>
     <div class="compare">
       <div class="compare-card them">
@@ -667,9 +669,9 @@ a{ color:inherit; text-decoration:none; }
       </div>
       <div class="compare-card us">
         <h4>Falcon</h4>
-        <div class="compare-line"><span class="compare-mark">→</span><span>Every person's context, one shared session</span></div>
-        <div class="compare-line"><span class="compare-mark">→</span><span>Surfaces the gap live, mid-decision</span></div>
-        <div class="compare-line"><span class="compare-mark">→</span><span>Reads everything the team actually shipped</span></div>
+        <div class="compare-line"><span class="compare-mark">→</span><span>Your own work, remembered and searchable</span></div>
+        <div class="compare-line"><span class="compare-mark">→</span><span>Answers on demand, grounded in the source</span></div>
+        <div class="compare-line"><span class="compare-mark">→</span><span>Grows into shared context as your team pairs in</span></div>
       </div>
     </div>
   </section>
@@ -869,8 +871,8 @@ a{ color:inherit; text-decoration:none; }
     </div>
     <div class="footer-cols">
       <div class="footer-brandcol">
-        <div class="title-md" style="font-family:'Instrument Sans';color:var(--ink);">An AI teammate for every meeting.</div>
-        <p class="body-md">Text-only meeting intelligence for engineering teams. Reads the work, surfaces the gap, records the decision.</p>
+        <div class="title-md" style="font-family:'Instrument Sans';color:var(--ink);">A personal AI that remembers your work.</div>
+        <p class="body-md">Personal, grounded context for engineering teams. Remembers your work, answers with the source — and grows into the room.</p>
       </div>
       <div>
         <h4>Product</h4>

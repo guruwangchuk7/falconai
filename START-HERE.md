@@ -71,9 +71,10 @@ dev seed, and the Playwright smoke shell. Still open:
 - [ ] The signed-in **T044** live run (above) + its Playwright authed journey.
 
 ## 5. Decisions still open (yours to make)
-- [ ] **D1 — solo-first repositioning:** apply after the WoZ result + a Phase-2 solo-retention
-  read (trigger is written into the PRD v2.7 changelog). It edits `PRD.md` + `design.md` +
-  `landing.html`, so do it once, with evidence.
+- [x] **D1 — solo-first repositioning: APPLIED (2026-08-30).** Both trigger halves met (WoZ +
+  strong Phase-2 solo-retention read). `PRD.md` (v2.9 changelog + Open Q8 resolved), `design.md`,
+  and `landing.html` now lead personal-first, with paired mediation as the earned expansion. Roadmap
+  end-state unchanged. Evidence: `reviews/d1-decision-memo.md`, `T030-quickstart-results.md`.
 - [ ] **OV-10 — erasure/tombstoning** design for the Decision Index (before it compounds).
 - [ ] Whether to keep the **system-audio fallback** cut (waits on the lawyer read).
 
