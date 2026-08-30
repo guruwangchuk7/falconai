@@ -146,10 +146,12 @@ Do not start Phase 1 tasks until G1–G3 clear.
   (`tsconfig.web-tests.json`) because the Node/NodeNext tests project can't typecheck apps/web
   handlers — that's now wired into CI (`pnpm typecheck:web-tests`). The DB assertions execute in the
   CI integration job (Docker) — not observable locally without Docker.
-- **T028** (authed Playwright e2e) — still open. Requires a running server + a **test-env-only
-  session-injection** seam in `getActiveSession` (a production auth-path change → must be hard-gated
-  to non-prod). Higher risk + unverifiable without Docker locally; hold for an explicit go before
-  touching the auth path. The route HTTP contract is now covered by T022's handler-level test.
+- **T028** (authed Playwright e2e) — still open; **actionable build plan in `T028-e2e-plan.md`.**
+  Preferred design mints a properly-signed Auth.js cookie (zero prod change) — no `getActiveSession`
+  backdoor needed. The real blockers are environment-bound: a seeded DB + a deterministic LLM in the
+  running server (needs live creds or a small non-prod `FALCON_FAKE_LLM` seam). Only validatable in
+  Docker/CI or on Guru's machine, so it's specced rather than landed blind. The route HTTP contract
+  is already covered by T022's handler-level test.
 - **T030** (manual quickstart V1–V9) — V1/V2/V3/V4/V9 covered by the automated unit + integration +
   eval suites (now + T022); V5 (edit) is additionally covered by T022; V6/V7/V8 confirmed via live
   dogfooding. Needs your machine + live creds for the manual feel pass.
