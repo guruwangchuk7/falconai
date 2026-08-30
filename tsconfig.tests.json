@@ -12,5 +12,8 @@
       "@falcon/integrations": ["./packages/integrations/src/index.ts"]
     }
   },
-  "include": ["tests"]
+  "include": ["tests"],
+  // Web route-handler contract tests import apps/web (bundler resolution + DOM lib). They are
+  // typechecked by tsconfig.web-tests.json instead; this Node/NodeNext project can't resolve them.
+  "exclude": ["tests/contract"]
 }

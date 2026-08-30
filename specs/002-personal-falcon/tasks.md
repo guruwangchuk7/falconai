@@ -86,7 +86,7 @@ Do not start Phase 1 tasks until G1–G3 clear.
 **Goal**: Scoped, grounded prep summary the user can edit (edit is authoritative).
 **Independent Test**: request a summary scoped to a topic → grounded brief; edit + reload → edited text persists as authoritative.
 
-- [ ] T022 [P] [US3] Contract test `tests/contract/falcon-summary.test.ts`: `/summary` (scoped) grounded + `PATCH /answers/{id}` edit-authoritative (contracts/api.md tests 6)
+- [x] T022 [P] [US3] Contract test `tests/contract/falcon-summary.test.ts`: `/summary` (scoped) grounded + `PATCH /answers/{id}` edit-authoritative (contracts/api.md tests 6). Route-level test — runs the REAL Next handlers against testcontainer Postgres (RLS on, `falcon_app`), mocking only the auth session + `deps()`/rate-limiter/observability seams. Also asserts one `query_event` per summary (test 7) + the ownership 404. Typechecked via `tsconfig.web-tests.json` (bundler+DOM, mirrors apps/web) since the Node/NodeNext `tsconfig.tests.json` can't resolve apps/web handlers.
 - [x] T023 [US3] Generalize `packages/core/src/digest.ts` → scoped summary via the answer core (topic/time scope) (depends T007)
 - [x] T024 [US3] Routes: `POST /api/falcon/summary` + `GET /api/falcon/conversations` + `GET /api/falcon/conversations/{id}` (depends T023, T014)
 - [x] T025 [US3] `PATCH /api/falcon/answers/{id}` → `edited_text` authoritative (mirror the Phase-1 digest edit) (depends T014)
@@ -139,16 +139,19 @@ Do not start Phase 1 tasks until G1–G3 clear.
 
 ## Deferred (intentional — not forgotten)
 
-The final 3 tasks are deliberately deferred; Phase 2 is functionally + quality complete without them.
+- **T022** (summary/edit contract test) — ✅ **DONE.** The route-level harness (mock the session +
+  `deps()`/rate-limiter/observability seams; run the real handlers against testcontainer Postgres)
+  turned out to be a clean, zero-production-code way to cover the edit-authoritative + ownership-404
+  path (previously untested anywhere). It needs its own bundler+DOM typecheck config
+  (`tsconfig.web-tests.json`) because the Node/NodeNext tests project can't typecheck apps/web
+  handlers — that's now wired into CI (`pnpm typecheck:web-tests`). The DB assertions execute in the
+  CI integration job (Docker) — not observable locally without Docker.
+- **T028** (authed Playwright e2e) — still open. Requires a running server + a **test-env-only
+  session-injection** seam in `getActiveSession` (a production auth-path change → must be hard-gated
+  to non-prod). Higher risk + unverifiable without Docker locally; hold for an explicit go before
+  touching the auth path. The route HTTP contract is now covered by T022's handler-level test.
+- **T030** (manual quickstart V1–V9) — V1/V2/V3/V4/V9 covered by the automated unit + integration +
+  eval suites (now + T022); V5 (edit) is additionally covered by T022; V6/V7/V8 confirmed via live
+  dogfooding. Needs your machine + live creds for the manual feel pass.
 
-- **T022** (summary/edit contract test) — the summary path is already covered by the answer-path
-  integration tests (it reuses the same grounded core), and the edit path is thin ownership-checked
-  route logic. A route-level test needs the same authed harness as T028 for marginal added coverage.
-- **T028** (authed Playwright e2e) — requires headless GitHub OAuth, which is genuinely hard to
-  automate. The HTTP layer is thin and already verified (401 gating + live dogfooding). Low ROI vs
-  the OAuth-automation effort; revisit if/when a test-session-injection helper exists.
-- **T030** (manual quickstart V1–V9) — V1/V2/V3/V4/V9 are covered by the automated unit + integration
-  + eval suites; V5 (edit), V6 (follow-up), V7 (latency feel), V8 (degraded) are being confirmed via
-  live dogfooding. No separate manual pass scheduled.
-
-**Done: 29/32. The 3 open are documented low-ROI/deferred, not blockers.**
+**Done: 30/32. T028 (auth-path change, needs a go) + T030 (needs your live machine) remain.**

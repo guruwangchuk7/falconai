@@ -101,11 +101,13 @@ running. **Try it:** sign in → **Ask Falcon** in the nav (`/falcon`). Ask abou
 ("what did I do for authentication?") or **Summarize a topic**; every claim shows its source, and
 if Falcon can't ground an answer it says so. You can **edit** any answer — your version wins.
 
-- Spec/plan/tasks: `specs/002-personal-falcon/` (19/32 tasks done). Grounding gate + RLS on the new
+- Spec/plan/tasks: `specs/002-personal-falcon/` (30/32 tasks done). Grounding gate + RLS on the new
   tables are covered by automated tests (`tests/unit/answer-grounding.test.ts`,
-  `tests/integration/personal-falcon-rls.test.ts`).
+  `tests/integration/personal-falcon-rls.test.ts`, `tests/integration/answer.test.ts`), and the
+  summary + edit-authoritative + ownership routes now have a handler-level contract test
+  (`tests/contract/falcon-summary.test.ts`, run in the CI integration job).
 - **Success metric to watch:** solo retention (do you/testers come back to ask?) — this is the
   second half of the D1 trigger; a strong read confirms building toward the Coordinator.
-- Still open before "done": authed end-to-end/contract tests (need a test-session harness),
-  confirmed-decision citations, answer streaming, an answer-grounding eval, and observability —
-  tracked in `specs/002-personal-falcon/tasks.md` (T012/T013/T019/T021/T022/T027–T032).
+- Still open (2): **T028** authed Playwright e2e — needs a test-env-only session-injection seam in
+  `getActiveSession` (a production auth-path change; held for an explicit go); and **T030** the
+  manual quickstart V1–V9 feel pass — needs your machine + live creds.

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // Typecheck context for route-handler contract tests under tests/contract/. These import the
+  // apps/web Next handlers, which are authored for bundler module resolution + the DOM lib (Request/
+  // Response, next/server) — the Node/NodeNext tsconfig.tests.json can't typecheck them. This config
+  // mirrors apps/web/tsconfig.json so the handlers + their @/… imports resolve exactly as they do in
+  // the app, while re-mapping the workspace + "@/*" paths for the repo-root cwd.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./apps/web/*"],
+      "@falcon/db": ["./packages/db/src/index.ts"],
+      "@falcon/core": ["./packages/core/src/index.ts"],
+      "@falcon/llm": ["./packages/llm/src/index.ts"],
+      "@falcon/config": ["./packages/config/src/index.ts"],
+      "@falcon/integrations": ["./packages/integrations/src/index.ts"],
+      "@falcon/queue": ["./packages/queue/src/index.ts"],
+      "@falcon/observability": ["./packages/observability/src/index.ts"],
+      "@falcon/secrets": ["./packages/secrets/src/index.ts"]
+    }
+  },
+  "include": ["tests/contract/**/*.ts", "tests/support/**/*.ts"]
+}

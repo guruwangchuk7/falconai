@@ -8,6 +8,7 @@
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "typecheck:tests": "tsc -p tsconfig.tests.json",
+    "typecheck:web-tests": "tsc -p tsconfig.web-tests.json",
     "test": "turbo test",
     "test:integration": "vitest run",
     "dev": "turbo dev"

@@ -25,6 +25,7 @@ jobs:
         run: |
           pnpm -r typecheck
           pnpm typecheck:tests
+          pnpm typecheck:web-tests
 
   integration:
     # The isolation / ACL / partition-prune / pooling guards (SC-003, blocker-class) run against a
