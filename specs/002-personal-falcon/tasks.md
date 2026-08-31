@@ -14,8 +14,8 @@ description: "Task list for Personal Falcon (Phase 2)"
   `design.md`/`landing.html` untouched. Narrow scope: sanctions the personal Q&A capability; full
   solo-first reposition stays held pending the Phase-2 solo-retention read. Draft:
   `reviews/prd-d1-amendment-draft.md`.
-- [ ] **G2** Owner gives explicit approval to start application code (Setup gate).
-- [ ] **G3** Confirm whether any PRD §22 AD-1…AD-8 governs the retrieval/answer path; if so, resolve
+- [x] **G2** Owner gives explicit approval to start application code (Setup gate).
+- [x] **G3** Confirm whether any PRD §22 AD-1…AD-8 governs the retrieval/answer path; if so, resolve
   by spike before the dependent task.
 
 Do not start Phase 1 tasks until G1–G3 clear.
