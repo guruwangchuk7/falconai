@@ -26,14 +26,25 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             let handle = app.handle().clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(Duration::from_millis(600));
-                if let Err(e) = run_capture(handle.clone()) {
-                    let msg = format!("{e}");
-                    eprintln!("[falcon] mic capture unavailable: {msg}");
-                    let _ = handle.emit("mic-status", format!("error: {msg}"));
-                }
-            });
+            // PCM frames: audio callback → WebSocket task. The task always runs (so this window
+            // receives the shared transcript); capture is skipped in viewer mode (FALCON_NO_MIC),
+            // letting a second window just watch without contending for the mic.
+            let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+            tauri::async_runtime::spawn(ws_task(handle.clone(), rx));
+
+            if std::env::var("FALCON_NO_MIC").is_err() {
+                let h = handle.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(600));
+                    if let Err(e) = run_capture(h.clone(), tx) {
+                        let msg = format!("{e}");
+                        eprintln!("[falcon] mic capture unavailable: {msg}");
+                        let _ = h.emit("mic-status", format!("error: {msg}"));
+                    }
+                });
+            } else {
+                let _ = handle.emit("mic-status", "viewer (no mic)");
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -64,7 +75,10 @@ fn downmix_pcm(samples: &[f32], channels: usize) -> Vec<u8> {
     out
 }
 
-fn run_capture(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+fn run_capture(
+    app: tauri::AppHandle,
+    tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let host = cpal::default_host();
     let device = host
         .default_input_device()
@@ -73,10 +87,6 @@ fn run_capture(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     let fmt = supported.sample_format();
     let ch = supported.channels() as usize;
     let cfg: cpal::StreamConfig = supported.into();
-
-    // PCM frames flow from the audio callback → the WebSocket task, which streams them to the worker.
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
-    tauri::async_runtime::spawn(ws_task(app.clone(), rx));
 
     let count = Arc::new(AtomicU64::new(0));
 
