@@ -149,13 +149,17 @@ async fn ws_task(app: tauri::AppHandle, mut rx: UnboundedReceiver<Vec<u8>>) {
                     }
                 });
 
-                // Writer: PCM frames → the worker, until the socket breaks.
+                // Writer: PCM frames → the worker while audio is available.
                 while let Some(pcm) = rx.recv().await {
                     if sink.send(Message::Binary(pcm.into())).await.is_err() {
                         break;
                     }
                 }
-                reader.abort();
+                // In viewer mode the audio channel is closed (no mic), so the loop above exits at
+                // once — but the socket is healthy, so keep RECEIVING the shared transcript until the
+                // worker actually closes the connection. (For a talker, the socket only ends here on a
+                // send failure, and the reader ends immediately too.)
+                let _ = reader.await;
                 let _ = app.emit("mic-status", "reconnecting…");
             }
             Err(_) => {
