@@ -1,0 +1,28 @@
+# Keep the build context lean WITHOUT stripping any source: `next build` type-checks the whole web
+# project (incl. the Playwright config that imports ./e2e/support/fixture), so e2e/ and *.test.ts must
+# stay present. Exclude only deps, build artifacts, secrets, VCS, and large non-code dirs.
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+.turbo
+**/.turbo
+coverage
+**/coverage
+playwright-report
+**/playwright-report
+test-results
+**/test-results
+
+# Never ship local secrets / env / state into the image
+.git
+.env
+.env.*
+.secrets
+**/.secrets
+*.enc.json
+
+# Large generated corpus not referenced by any TypeScript build
+graphify-out

@@ -7,7 +7,7 @@ import { linearEnv, loadEnv } from '@falcon/config';
 import { defaultJobOpts, syncQueue } from '@falcon/queue';
 import { getActiveSession } from '@/lib/session';
 import { deps, secrets } from '@/lib/deps';
-import { LINEAR_STATE_COOKIE, linearRedirectUri } from '../connect/route';
+import { LINEAR_STATE_COOKIE, linearRedirectUri } from '@/lib/linear-oauth';
 
 export const runtime = 'nodejs';
 
