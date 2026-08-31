@@ -29,7 +29,8 @@
       "@falcon/queue": ["./packages/queue/src/index.ts"],
       "@falcon/observability": ["./packages/observability/src/index.ts"],
       "@falcon/secrets": ["./packages/secrets/src/index.ts"],
-      "@falcon/stt": ["./packages/stt/src/index.ts"]
+      "@falcon/stt": ["./packages/stt/src/index.ts"],
+      "@falcon/session-core": ["./packages/session-core/src/index.ts"]
     }
   },
   "include": ["tests/contract/**/*.ts", "tests/support/**/*.ts"]

@@ -6,6 +6,7 @@ const nextConfig = {
     '@falcon/core',
     '@falcon/queue',
     '@falcon/secrets',
+    '@falcon/session-core',
     '@falcon/config',
     '@falcon/integrations',
     '@falcon/llm',

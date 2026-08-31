@@ -19,6 +19,7 @@
     "@falcon/llm": "workspace:*",
     "@falcon/observability": "workspace:*",
     "@falcon/queue": "workspace:*",
+    "@falcon/session-core": "workspace:*",
     "@falcon/secrets": "workspace:*",
     "drizzle-orm": "0.36.4",
     "next": "15.1.3",

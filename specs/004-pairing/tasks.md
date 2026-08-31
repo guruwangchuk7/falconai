@@ -71,7 +71,7 @@ Do not start Phase 1 tasks until G1 clears. T023 additionally waits on G2.
 ### Tests for User Story 1 ⚠️ (write first, ensure they FAIL)
 
 - [x] T017 [P] [US1] Contract test `tests/contract/rest-pairing.test.ts`: resolve / team-auto-ack / join-by-code + consent gate + code TTL/rate/scope rejections + cross-tenant 404 (contracts/rest-pairing.md; F7, §7.2, §12.9)
-- [ ] T018 [P] [US1] Contract test `tests/contract/ws-client-worker.test.ts`: attribution = connection owner, append-before-ack, fencing filter, lossless `resync` (contracts/ws-client-worker.md; G2/§6.1, §12.5)
+- [x] T018 [P] [US1] Contract test `tests/contract/ws-client-worker.test.ts`: attribution = connection owner, append-before-ack, fencing filter, lossless `resync` (contracts/ws-client-worker.md; G2/§6.1, §12.5)
 - [x] T019 [P] [US1] Integration test `tests/integration/pairing-attribution.test.ts` (two-client harness): overlapping speech → correct per-speaker attribution, zero cross-talk misattribution (SC-002)
 
 ### Implementation for User Story 1
@@ -83,9 +83,9 @@ Do not start Phase 1 tasks until G1 clears. T023 additionally waits on G2.
 - [x] T024 [P] [US1] Pairing REST routes `apps/web/app/api/session/*`: `resolve` (calendar, F7.1), `team-auto/ack` (F7.2), `join-by-code` + `POST /{id}/code` mint with TTL/rate/scope (F7.3), `leave`; all via Auth.js + `withTenant`/RLS (contracts/rest-pairing.md)
 - [x] T025 [P] [US1] Calendar session-key matching in `packages/integrations/src`: shared Google/MS Calendar event id → session key (F7.1)
 - [x] T026 [US1] Consent once-per-pair: `consent_pair` read/write, internal-remembered vs cross-workspace-always-prompt, one-time consent card UI naming shared/not-shared + revoke (§7.2, §12.4)
-- [ ] T027 [US1] SSE panel stream `apps/web/app/api/session/[id]/stream/route.ts`: `session_state`, `transcript_append` (with `ambiguous_order`), `transcript_gap`, `capture_indicator`, `coverage_notice`, fencing filter — **event enum contains no card/nudge/escalation** (contracts/sse-panel.md; FR-023)
+- [x] T027 [US1] SSE panel stream `apps/web/app/api/session/[id]/stream/route.ts`: `session_state`, `transcript_append` (with `ambiguous_order`), `transcript_gap`, `capture_indicator`, `coverage_notice`, fencing filter — **event enum contains no card/nudge/escalation** (contracts/sse-panel.md; FR-023)
 - [ ] T028 [US1] Panel UI (shared React in `apps/web` + Tauri webview): "Paired with X · N others" + one-tap Leave, live merged transcript with attribution + marked gaps, always-visible capture indicator (§7.2, §12.4)
-- [ ] T029 [US1] Degradation ladder: unpaired speaker **not captured** + coverage gap flagged; network loss → local buffer + resync + marked gap; solo (nobody paired) still works (§7.3, F4.7-cut, Constitution IV)
+- [x] T029 [US1] Degradation ladder: unpaired speaker **not captured** + coverage gap flagged; network loss → local buffer + resync + marked gap; solo (nobody paired) still works (§7.3, F4.7-cut, Constitution IV)
 
 **Checkpoint**: two people pair and get one correctly-attributed shared transcript. MVP demoable.
 

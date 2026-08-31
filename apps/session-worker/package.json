@@ -16,6 +16,7 @@
     "@falcon/observability": "workspace:*",
     "@falcon/queue": "workspace:*",
     "@falcon/secrets": "workspace:*",
+    "@falcon/session-core": "workspace:*",
     "@falcon/stt": "workspace:*",
     "fastify": "^5.1.0",
     "ioredis": "^5.4.1",

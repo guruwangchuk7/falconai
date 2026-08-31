@@ -3,7 +3,7 @@
 // be a correctness no-op (only recovery latency grows). Runs against a real Redis (Testcontainers).
 import { it, expect, beforeAll, afterAll } from 'vitest';
 import { Redis } from 'ioredis';
-import { createEventLog, type SessionEvent } from '../../apps/session-worker/src/eventlog.js';
+import { createEventLog, type SessionEvent } from '@falcon/session-core';
 import { startTestRedis, type TestRedis } from '../support/redis.js';
 
 let tr: TestRedis;
