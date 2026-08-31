@@ -19,6 +19,12 @@ if (tauri?.event?.listen) {
     dot.classList.toggle('on', !!speaking);
     capLabel.textContent = speaking ? 'Speaking' : 'Mic on';
   });
+  // Status/errors from the capture thread (e.g. no mic / blocked by privacy settings).
+  tauri.event.listen('mic-status', (evt) => {
+    const s = String(evt.payload || '');
+    capLabel.textContent = s === 'capturing' ? 'Mic on' : `Mic: ${s.slice(0, 40)}`;
+    if (s !== 'capturing') capLabel.title = s;
+  });
 } else {
   capLabel.textContent = 'Mic (browser)';
 }
