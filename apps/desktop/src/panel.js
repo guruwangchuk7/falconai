@@ -21,18 +21,57 @@ if (listen) {
     dot.classList.toggle('on', !!speaking);
     capLabel.textContent = speaking ? 'Speaking' : 'Mic on';
   });
-  // Status/errors from the capture thread (e.g. no mic / unsupported format).
+  // Status/errors from the capture + worker-connection threads.
   listen('mic-status', (evt) => {
     const s = String(evt.payload || '');
-    if (s === 'capturing') {
+    if (s === 'capturing' || s === 'connected') {
       if (capLabel.textContent === 'Mic off') capLabel.textContent = 'Mic on';
+      if (s === 'connected') pair.textContent = 'Connected';
     } else {
       capLabel.textContent = `Mic: ${s.slice(0, 40)}`;
       capLabel.title = s;
     }
   });
+  // Live transcript the worker sends back over the WebSocket (T021).
+  listen('transcript', (evt) => {
+    let m;
+    try {
+      m = JSON.parse(evt.payload);
+    } catch {
+      return;
+    }
+    if (m.type === 'stt_final' && m.text) addFinal(m.userId, m.text);
+    else if (m.type === 'stt_interim' && m.text) showInterim(m.text);
+  });
 } else {
   capLabel.textContent = 'Mic (browser)';
+}
+
+// --- transcript rendering (from the worker's stt events) ---
+let interimEl = null;
+function showInterim(text) {
+  empty.style.display = 'none';
+  if (!interimEl) {
+    interimEl = document.createElement('p');
+    interimEl.className = 'utt';
+    interimEl.style.opacity = '0.55';
+    transcript.appendChild(interimEl);
+  }
+  interimEl.textContent = text;
+  transcript.parentElement.scrollTop = transcript.parentElement.scrollHeight;
+}
+function addFinal(userId, text) {
+  empty.style.display = 'none';
+  if (interimEl) { interimEl.remove(); interimEl = null; }
+  const p = document.createElement('p');
+  p.className = 'utt';
+  const who = document.createElement('span');
+  who.className = 'who';
+  who.textContent = userId;
+  p.appendChild(who);
+  p.appendChild(document.createTextNode(text));
+  transcript.appendChild(p);
+  transcript.parentElement.scrollTop = transcript.parentElement.scrollHeight;
 }
 
 // --- Live transcript via SSE. The base URL + session id come from the pairing flow (wired with the
