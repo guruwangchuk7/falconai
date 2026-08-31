@@ -140,3 +140,9 @@ export function createSttProvider(): SttProvider {
   if (process.env.FALCON_FAKE_STT) return new FakeSttProvider();
   return new UnimplementedSttProvider('deepgram-nova');
 }
+
+export {
+  createCircuitBrokenStt,
+  calibrateConfidence,
+  type CircuitOptions,
+} from './circuit.js';

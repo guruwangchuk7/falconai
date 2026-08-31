@@ -18,9 +18,15 @@ importers:
       '@types/node':
         specifier: '24'
         version: 24.13.3
+      '@types/ws':
+        specifier: ^8.5.13
+        version: 8.18.1
       drizzle-orm:
         specifier: 0.36.4
         version: 0.36.4(@types/react@19.0.2)(postgres@3.4.5)(react@19.0.0)
+      fastify:
+        specifier: ^5.1.0
+        version: 5.12.1
       ioredis:
         specifier: ^5.4.1
         version: 5.4.1
@@ -42,6 +48,9 @@ importers:
       vitest:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@24.13.3)
+      ws:
+        specifier: ^8.18.0
+        version: 8.21.3
 
   apps/desktop: {}
 
