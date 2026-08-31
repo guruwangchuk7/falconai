@@ -1,0 +1,9 @@
+{
+  "name": "@falcon/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri"
+  }
+}
