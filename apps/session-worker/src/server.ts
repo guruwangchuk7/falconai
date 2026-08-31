@@ -81,9 +81,6 @@ export interface SessionWorkerDeps {
  */
 export function attachSessionWs(app: FastifyInstance, deps: SessionWorkerDeps): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
-  // Per-session client sockets, so each utterance broadcasts to everyone in the session (the shared
-  // transcript). Keyed by sessionId for this worker (each session is pinned to one worker, §6.3).
-  const sessionClients = new Map<string, Set<WebSocket>>();
 
   app.server.on('upgrade', (req, socket, head) => {
     const parsed = parseConnUrl(req.url);
@@ -106,17 +103,6 @@ export function attachSessionWs(app: FastifyInstance, deps: SessionWorkerDeps): 
     const ownership = createOwnership(deps.redis, sessionId, deps.workerId);
     const eventLog = createEventLog(deps.redis, sessionId);
 
-    // Register this socket so utterances broadcast to everyone in the session (shared transcript).
-    let clients = sessionClients.get(sessionId);
-    if (!clients) sessionClients.set(sessionId, (clients = new Set()));
-    clients.add(ws);
-    const broadcast = (msg: unknown) => {
-      const text = JSON.stringify(msg);
-      for (const c of sessionClients.get(sessionId) ?? []) {
-        if (c.readyState === 1 /* OPEN */) c.send(text);
-      }
-    };
-
     void (async () => {
       const token = await ownership.claim();
       if (token === null) {
@@ -135,11 +121,15 @@ export function attachSessionWs(app: FastifyInstance, deps: SessionWorkerDeps): 
       ws.on('close', () => {
         clearInterval(heartbeat);
         void stream.close();
-        clients?.delete(ws);
-        if (clients && clients.size === 0) sessionClients.delete(sessionId);
       });
-      // Broadcast every utterance to all session members (attribution rides in msg.userId).
-      await runIngest(stream, userId, eventLog, ownership, { onEvent: broadcast });
+      // PRIVACY (PRD §9.3): a person's raw transcript goes back ONLY to that person — never to other
+      // panels. The only thing ever broadcast to everyone is a grounded, blame-neutral CARD (Phase 4,
+      // F9). The full transcript still flows into the session event log for the Coordinator to read.
+      await runIngest(stream, userId, eventLog, ownership, {
+        onEvent: (msg) => {
+          if (ws.readyState === 1 /* OPEN */) ws.send(JSON.stringify(msg));
+        },
+      });
       clearInterval(heartbeat);
     })();
   });
