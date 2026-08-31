@@ -7,14 +7,15 @@
     "frontendDist": "../src"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
-      { "title": "Falcon", "width": 420, "height": 640, "resizable": true }
+      { "title": "Falcon", "width": 440, "height": 720, "resizable": true }
     ],
     "security": { "csp": null }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": []
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
   }
 }
