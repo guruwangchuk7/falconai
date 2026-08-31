@@ -46,13 +46,13 @@ Do not start Phase 1 tasks until G1 clears. T023 additionally waits on G2.
 
 **⚠️ No user-story work begins until this phase is complete.**
 
-- [ ] T007 Add tenant-scoped tables to `packages/db/src/schema.ts`: `session`, `session_membership`, `session_code`, `consent_pair`, `open_thread`, `session_visibility_scope`, `session_event` (per data-model.md)
-- [ ] T008 Author `packages/db/drizzle/0003_pairing.sql`: create the tables, `enable`/`force row level security`, `workspace_id` isolation policies, and grants to `falcon_app` (depends T007)
-- [ ] T009 [P] Integration guard `tests/integration/pairing-rls.test.ts`: new tables fail-closed without tenant ctx, isolate by workspace, reject mismatched-workspace inserts (extends the Phase-1 isolation suite; run as `falcon_app`) (§12.9/R25)
-- [ ] T010 Redis event-log module `apps/session-worker/src/eventlog.ts`: append-before-action to `session:{id}:events`, snapshot cache, replay fold for merged transcript / membership / threads (CX-1, §12.3)
-- [ ] T011 [P] Unit test `apps/session-worker/src/eventlog.test.ts`: deleting all snapshots is a correctness no-op; replay reproduces identical folds (SC-005 property)
-- [ ] T012 Ownership module `apps/session-worker/src/ownership.ts`: Redis lease + TTL heartbeat + monotonic fencing token; symmetric per-worker reconciler claims owned-vs-held delta (§12.5, R14, §6.3)
-- [ ] T013 [P] Integration test `tests/integration/session-ownership.test.ts`: fencing monotonicity, stale-token rejection (split-brain impossible), reconciler picks up a dead worker's sessions
+- [x] T007 Add tenant-scoped tables to `packages/db/src/schema.ts`: `session`, `session_membership`, `session_code`, `consent_pair`, `open_thread`, `session_visibility_scope`, `session_event` (per data-model.md)
+- [x] T008 Author `packages/db/drizzle/0003_pairing.sql`: create the tables, `enable`/`force row level security`, `workspace_id` isolation policies, and grants to `falcon_app` (depends T007)
+- [x] T009 [P] Integration guard `tests/integration/pairing-rls.test.ts`: new tables fail-closed without tenant ctx, isolate by workspace, reject mismatched-workspace inserts (extends the Phase-1 isolation suite; run as `falcon_app`) (§12.9/R25) — **5 tests pass on real Postgres**
+- [x] T010 Redis event-log module `apps/session-worker/src/eventlog.ts`: append-before-action to `session:{id}:events`, snapshot cache, replay fold for merged transcript / membership / threads (CX-1, §12.3)
+- [x] T011 [P] Unit test `tests/integration/eventlog.test.ts`: deleting all snapshots is a correctness no-op; replay reproduces identical folds (SC-005 property) — **CX-1 proven on real Redis**
+- [x] T012 Ownership module `apps/session-worker/src/ownership.ts`: Redis lease + TTL heartbeat + monotonic fencing token; symmetric per-worker reconciler claims owned-vs-held delta (§12.5, R14, §6.3)
+- [x] T013 [P] Integration test `tests/integration/session-ownership.test.ts`: fencing monotonicity, stale-token rejection (split-brain impossible), reconciler picks up a dead worker's sessions — **4 tests pass**
 - [ ] T014 Session worker `apps/session-worker/src/server.ts`: Fastify + `ws` bootstrap, consistent-hash `session_id` pinning, lease-holder-only writes/publishes (§6.3, §12.5)
 - [ ] T015 [P] STT provider interface in `packages/stt/src`: Deepgram Nova primary + AssemblyAI failover behind a circuit breaker, utterance-boundary failover, per-vendor confidence calibration, timestamps anchored to our own audio sequence numbers (§12.9, research R3)
 - [ ] T016 [P] STT failover test `packages/stt/src/failover.test.ts` via the fault shim: kill socket / inject latency / garble finals → utterance-boundary failover, abandoned utterance re-sent, no permanent gap (research R3)

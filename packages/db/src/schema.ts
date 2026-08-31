@@ -3,7 +3,7 @@
 // typed surface the app queries through. Every tenant table carries workspace_id.
 
 import {
-  pgTable, uuid, text, jsonb, timestamp, integer, boolean, vector, unique,
+  pgTable, uuid, text, jsonb, timestamp, integer, boolean, bigint, vector, unique,
 } from 'drizzle-orm/pg-core';
 
 export const workspace = pgTable('workspace', {
@@ -169,4 +169,88 @@ export const queryEvent = pgTable('query_event', {
   userId: uuid('user_id').notNull(),
   kind: text('kind').notNull().default('qa'),          // qa | summary
   occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- Phase 3: Pairing (0003_pairing.sql) ----------
+// Durable, tenant-scoped records. Live session state (merged transcript, open-thread folds,
+// membership) lives in Redis Streams and is replayed (CX-1); these tables hold durable/finalized
+// data. Raw audio is never persisted anywhere (§12.3/R6). See specs/004-pairing/data-model.md.
+
+export const session = pgTable('session', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),
+  sessionKey: text('session_key').notNull(),           // calendar event id | team-auto id | code id
+  origin: text('origin').notNull(),                    // calendar | team_auto | code
+  status: text('status').notNull().default('active'),  // active | ended
+  ownerFencingToken: bigint('owner_fencing_token', { mode: 'number' }).notNull().default(0), // §12.5/R14
+  retentionClass: text('retention_class').notNull().default('standard'),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+});
+
+export const sessionMembership = pgTable('session_membership', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),
+  sessionId: uuid('session_id').notNull(),
+  userId: uuid('user_id').notNull(),
+  roleProfile: text('role_profile').notNull().default('engineer'), // F11 Context Pack
+  joinOrigin: text('join_origin').notNull(),           // calendar | team_auto | code
+  consentState: text('consent_state').notNull().default('granted'), // granted | revoked
+  joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+  leftAt: timestamp('left_at', { withTimezone: true }), // null = present
+});
+
+export const sessionCode = pgTable('session_code', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),
+  sessionId: uuid('session_id').notNull(),
+  code: text('code').notNull(),                        // 6-char, F7.3
+  scope: text('scope').notNull().default('workspace'), // workspace | cross_workspace
+  maxJoins: integer('max_joins').notNull().default(10),
+  joinCount: integer('join_count').notNull().default(0),
+  createdBy: uuid('created_by').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(), // TTL
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ uq: unique().on(t.workspaceId, t.code) }));
+
+export const consentPair = pgTable('consent_pair', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),         // initiating workspace = RLS scope
+  userLo: uuid('user_lo').notNull(),                   // canonical-ordered so the pair is unique
+  userHi: uuid('user_hi').notNull(),
+  isCrossWorkspace: boolean('is_cross_workspace').notNull().default(false), // if true, always re-prompt (§7.2)
+  grantedAt: timestamp('granted_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (t) => ({ uq: unique().on(t.workspaceId, t.userLo, t.userHi) }));
+
+export const openThread = pgTable('open_thread', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),
+  sessionId: uuid('session_id').notNull(),
+  topicEmbedding: vector('topic_embedding', { dimensions: 1024 }), // voyage-code-4 (§12.9)
+  embeddingModel: text('embedding_model'),
+  embeddingVersion: text('embedding_version'),
+  firstSeenSeq: bigint('first_seen_seq', { mode: 'number' }).notNull(),
+  lastSeenSeq: bigint('last_seen_seq', { mode: 'number' }).notNull(),
+  status: text('status').notNull().default('open'),    // open | merged | split (F6.1a)
+  mergedInto: uuid('merged_into'),
+});
+
+export const sessionVisibilityScope = pgTable('session_visibility_scope', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),
+  sessionId: uuid('session_id').notNull(),
+  membershipVersion: integer('membership_version').notNull(), // bumped on join/leave (F9.1a)
+  artifactScope: jsonb('artifact_scope').notNull(),    // intersection of all participants' ACL-visible artifacts
+  computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ uq: unique().on(t.workspaceId, t.sessionId) }));
+
+export const sessionEvent = pgTable('session_event', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),
+  sessionId: uuid('session_id').notNull(),
+  seq: bigint('seq', { mode: 'number' }).notNull(),    // per-session monotonic
+  type: text('type').notNull(),                        // member_joined | utterance_final | thread_* | ...
+  payload: jsonb('payload').notNull(),                 // NO raw audio (§12.3)
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
