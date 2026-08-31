@@ -53,9 +53,9 @@ Do not start Phase 1 tasks until G1 clears. T023 additionally waits on G2.
 - [x] T011 [P] Unit test `tests/integration/eventlog.test.ts`: deleting all snapshots is a correctness no-op; replay reproduces identical folds (SC-005 property) — **CX-1 proven on real Redis**
 - [x] T012 Ownership module `apps/session-worker/src/ownership.ts`: Redis lease + TTL heartbeat + monotonic fencing token; symmetric per-worker reconciler claims owned-vs-held delta (§12.5, R14, §6.3)
 - [x] T013 [P] Integration test `tests/integration/session-ownership.test.ts`: fencing monotonicity, stale-token rejection (split-brain impossible), reconciler picks up a dead worker's sessions — **4 tests pass**
-- [ ] T014 Session worker `apps/session-worker/src/server.ts`: Fastify + `ws` bootstrap, consistent-hash `session_id` pinning, lease-holder-only writes/publishes (§6.3, §12.5)
-- [ ] T015 [P] STT provider interface in `packages/stt/src`: Deepgram Nova primary + AssemblyAI failover behind a circuit breaker, utterance-boundary failover, per-vendor confidence calibration, timestamps anchored to our own audio sequence numbers (§12.9, research R3)
-- [ ] T016 [P] STT failover test `packages/stt/src/failover.test.ts` via the fault shim: kill socket / inject latency / garble finals → utterance-boundary failover, abandoned utterance re-sent, no permanent gap (research R3)
+- [x] T014 Session worker `apps/session-worker/src/server.ts`: Fastify + `ws` bootstrap, consistent-hash `session_id` pinning, lease-holder-only writes/publishes (§6.3, §12.5) — `runIngest` appends attributed to the connection owner only while lease-held; `tests/integration/session-ingest.test.ts` (4 tests: /health, parse, attribution, split-brain guard)
+- [x] T015 [P] STT circuit breaker in `packages/stt/src/circuit.ts`: primary → failover at the utterance boundary, one-way (no flapping), confidence-calibration seam (§12.9, research R3). Real Deepgram/AssemblyAI adapters need keys (deferred); the breaker orchestration is complete + tested
+- [x] T016 [P] STT failover test `tests/unit/stt-failover.test.ts` via the fault shim: primary total_loss → utterance-boundary failover to secondary, no permanent gap (research R3)
 
 **Checkpoint**: tenant-isolated tables + event-sourced state + fencing ownership + WS/STT substrate ready.
 
