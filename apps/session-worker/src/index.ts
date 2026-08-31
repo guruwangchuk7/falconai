@@ -23,3 +23,5 @@ const app = startSessionWorker({
 });
 
 await app.listen({ port: PORT, host: '0.0.0.0' });
+// The Fastify logger is off (keeps the hot path quiet), so print one line to confirm it's up.
+console.log(`[falcon] session worker listening on http://127.0.0.1:${PORT} — STT: ${process.env.FALCON_FAKE_STT ? 'fake' : 'deepgram'}`);
