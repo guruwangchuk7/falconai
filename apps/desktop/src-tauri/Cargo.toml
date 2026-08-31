@@ -14,7 +14,7 @@ serde_json = "1"
 # Mic capture (T020). VAD here is a simple energy gate for the MVP; Silero VAD (ONNX) is the upgrade.
 cpal = "0.15"
 # Stream audio to the session worker + receive transcripts back (T021).
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time"] }
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
 
