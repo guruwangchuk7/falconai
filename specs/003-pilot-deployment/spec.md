@@ -26,8 +26,7 @@ hosting, multi-user onboarding, and the security gate.
 
 | Component | Host | Notes |
 |---|---|---|
-| Web app (Next.js dashboard + `/falcon`) | **Fly.io** app `falcon-web` | `next build` → `next start`; public HTTPS |
-| Worker (BullMQ sync/index/digest) | **Fly.io** app `falcon-worker` | long-running `tsx src/index.ts`; no public port |
+| Web app + Worker (**co-located, D3**) | **Fly.io** single app `falcon-pilot` | one machine runs both processes so they share the file secrets backend; web = `next start` on public HTTPS, worker = `tsx src/index.ts` as a background process (`min_machines_running=1`). Split into `falcon-web` + `falcon-worker` when the managed secrets backend lands (post-pilot). |
 | Postgres + pgvector | **Supabase** (existing) | transaction pooler (6543); `falcon_app` runtime role (RLS), owner role for migrations |
 | Redis | **Upstash** (existing) | TCP `rediss://` URL for ioredis/BullMQ (not the REST URL) |
 | Object storage (later) | Cloudflare R2 | not required for Phase-2 pilot |
@@ -50,13 +49,25 @@ hosting, multi-user onboarding, and the security gate.
 1. **Rotate the leaked keys** (START-HERE §0): Supabase secret key + JWT secret (service_role).
 2. **Branch protection** on `main`: require the `typecheck`, `integration`, `no-token-in-db`, and
    `e2e` checks to pass before merge (START-HERE §6).
-3. **Choose the prod secrets backend** (research D3). Until a managed store is picked, tokens must
-   still never touch the app DB — the `no-token-in-db` CI gate enforces this; keep it green.
+3. **Prod secrets backend (D3) — DECIDED 2026-08-31: co-locate for the pilot.** Run web + worker in
+   **one Fly machine** so they share the working **file backend** (envelope-encrypted store on the
+   shared local FS, `SECRETS_KEK` from Fly secrets). This ships the pilot without building the stubbed
+   managed backend (`InfisicalSecretStore` currently throws). Rationale: two separate machines can't
+   share a local encrypted file, and per-user OAuth tokens are needed by both web (write on connect)
+   and worker (read on sync); co-location is the least-work path that still honors R26 (tokens
+   envelope-encrypted, **never** in the app DB — `no-token-in-db` CI gate stays green). **Reversible:**
+   split into two machines + a managed store (Infisical/Doppler/AWS SM) before scaling past the pilot.
 4. Generate a fresh 32-byte base64 `SECRETS_KEK` for prod (distinct from dev).
 
 ## 5. Deployment steps
 
 ### 5.1 Containerize (new files to create)
+
+> **D3 co-location (2026-08-31):** for the pilot this is **one** image + **one** `fly.pilot.toml`
+> running both processes (e.g. a tiny process manager or `concurrently`: `next start` + the `tsx`
+> worker) so they share the file secrets backend. The two-Dockerfile / two-toml split below is the
+> post-pilot target once the managed secrets backend lands. Set web's HTTP service on 3000 +
+> `/api/health`; keep the machine always-on (`min_machines_running=1`) so BullMQ jobs aren't dropped.
 - `apps/web/Dockerfile` — multi-stage: `corepack enable` → `pnpm install --frozen-lockfile` (workspace
   root) → `pnpm --filter @falcon/web build` → runtime image runs `pnpm --filter @falcon/web start`.
   Needs the monorepo context (build from repo root with a root `.dockerignore`).
@@ -135,7 +146,10 @@ The dominant *variable* cost is AI usage (Anthropic + Voyage), not hosting. See 
 
 ## 10. Task checklist
 
-- [ ] Security gate (§4): rotate keys, branch protection, `SECRETS_KEK`, secrets-backend choice.
+- [ ] Security gate (§4): **[1] rotate keys** (Guru — Supabase), **[2] branch protection on `main`**
+  (Guru — require `typecheck`+`integration`+`e2e`+`no-token-in-db` + require PR; ends direct-push),
+  **[3] secrets backend — DONE: co-locate (D3)**, **[4] `SECRETS_KEK`** (`openssl rand -base64 32` at
+  deploy).
 - [ ] `apps/web/Dockerfile`, `apps/worker/Dockerfile`, `.dockerignore`, `fly.web.toml`, `fly.worker.toml`.
 - [ ] Add `/api/health` route (if missing) for Fly checks.
 - [ ] `fly secrets set …` for web + worker.
