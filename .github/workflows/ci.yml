@@ -27,6 +27,22 @@ jobs:
           pnpm typecheck:tests
           pnpm typecheck:web-tests
 
+  build:
+    # Runs the REAL `next build` — CI previously only ran `tsc --noEmit` (misses App Router route-export
+    # rules) and `next dev` for e2e (no production build), so a route file exporting a non-handler
+    # binding slipped through until the pilot Docker build caught it. Needs no secrets (env is validated
+    # lazily at request/boot, not at import). Required check for the pilot (specs/003 §4).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Production build (@falcon/web)
+        run: pnpm --filter @falcon/web build
+
   integration:
     # The isolation / ACL / partition-prune / pooling guards (SC-003, blocker-class) run against a
     # real pgvector Postgres via Testcontainers. ubuntu-latest ships Docker, so this actually
