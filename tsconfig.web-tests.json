@@ -28,7 +28,8 @@
       "@falcon/integrations": ["./packages/integrations/src/index.ts"],
       "@falcon/queue": ["./packages/queue/src/index.ts"],
       "@falcon/observability": ["./packages/observability/src/index.ts"],
-      "@falcon/secrets": ["./packages/secrets/src/index.ts"]
+      "@falcon/secrets": ["./packages/secrets/src/index.ts"],
+      "@falcon/stt": ["./packages/stt/src/index.ts"]
     }
   },
   "include": ["tests/contract/**/*.ts", "tests/support/**/*.ts"]

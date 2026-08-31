@@ -10,9 +10,10 @@ description: "Task list for Pairing (Phase 3)"
 
 ## ⚠️ Blocking gates before ANY implementation task (Constitution I + Setup gate)
 
-- [ ] **G1** Owner gives explicit approval to start Phase 3 **application code** (Setup gate). Scoping
-  (spec/plan/tasks) is approved; writing app code is a separate go. No PRD amendment needed — Phase 3
-  is already sanctioned as written (PRD §17; see plan.md Constitution Check).
+- [x] **G1** Owner gives explicit approval to start Phase 3 **application code** (Setup gate) —
+  **APPROVED by Guru 2026-08-31.** Rationale: the warm engineers will adopt only the fully-built
+  product, so building Phase 3→4 (all $0 local dev) is the path to their usage; deploy waits on
+  Dabtong House funding. No PRD amendment needed — Phase 3 is already sanctioned (PRD §17).
 - [ ] **G2** **AD-1 clock-sync build spike** lands and its pass-bar is met **before** `merge.ts`
   ordering code (T023): on 2–3 real paired sessions over asymmetric links, server-arrival ordering +
   error margins correctly flags ambiguous pairs and produces **no confident mis-order** (research R1,
@@ -32,12 +33,12 @@ Do not start Phase 1 tasks until G1 clears. T023 additionally waits on G2.
 
 ## Phase 1: Setup (scaffolding)
 
-- [ ] T001 [P] Scaffold `apps/session-worker` (Fastify + `ws` + tsconfig) and wire into the pnpm workspace + turbo pipeline
-- [ ] T002 [P] Scaffold `apps/desktop` Tauri 2: `src-tauri` Rust crate + React webview that imports shared panel components from `apps/web`
-- [ ] T003 [P] Scaffold `packages/stt` thin provider interface skeleton mirroring the `@falcon/llm` provider pattern (interface + no-op stub + `FALCON_FAKE_STT` seam)
-- [ ] T004 [P] Create placeholder migration `packages/db/drizzle/0003_pairing.sql` and wire it into the `@falcon/db` migrate order after `0002_personal_falcon.sql`
-- [ ] T005 [P] Two-client deterministic harness skeleton in `tests/support/two-client.ts` (fake-STT seam + Testcontainers Redis helper), mirroring Phase 2's `FALCON_FAKE_LLM` approach
-- [ ] T006 [P] STT fault-injection shim skeleton in `tests/support/stt-fault-shim.ts` (kill socket / inject latency / garble finals)
+- [x] T001 [P] Scaffold `apps/session-worker` (Fastify + `ws` + tsconfig) and wire into the pnpm workspace + turbo pipeline — boots + serves `/health` (verified)
+- [x] T002 [P] Scaffold `apps/desktop` Tauri 2: `src-tauri` Rust crate + React webview that imports shared panel components from `apps/web` — **scaffold only; build deferred (needs Rust toolchain, see `apps/desktop/README.md`)**
+- [x] T003 [P] Scaffold `packages/stt` thin provider interface skeleton mirroring the `@falcon/llm` provider pattern (interface + no-op stub + `FALCON_FAKE_STT` seam) — incl. `FakeSttProvider`/`FakeSttStream`
+- [x] T004 [P] Create placeholder migration `packages/db/drizzle/0003_pairing.sql` and wire it into the `@falcon/db` migrate order after `0002_personal_falcon.sql` — migrate now chains `0001→0002→0003`
+- [x] T005 [P] Two-client deterministic harness skeleton in `tests/support/two-client.ts` (fake-STT seam + Testcontainers Redis helper), mirroring Phase 2's `FALCON_FAKE_LLM` approach
+- [x] T006 [P] STT fault-injection shim skeleton in `tests/support/stt-fault-shim.ts` (kill socket / inject latency / garble finals)
 
 ---
 

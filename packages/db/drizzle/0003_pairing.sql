@@ -1,0 +1,9 @@
+-- 0003_pairing.sql — Phase 3 (Pairing). Placeholder created in Setup (T004).
+--
+-- Real DDL is authored in Foundational task T008 (see specs/004-pairing/data-model.md):
+--   session, session_membership, session_code, consent_pair, open_thread,
+--   session_visibility_scope, session_event
+-- Each with `enable row level security` + `force row level security`, a workspace_id tenant policy,
+-- and grants to falcon_app (non-superuser, no BYPASSRLS) — the same pattern as 0001/0002 (§12.9/R25).
+--
+-- An all-comment migration is a valid no-op; it keeps 0003 wired into the migrate order now.
