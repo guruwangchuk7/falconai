@@ -24,13 +24,23 @@ export function createSessionApp(): FastifyInstance {
  *  jitter/RTT variance (T021). merge.ts uses this to mark ambiguous ordering (F5.3). */
 const DEFAULT_ERROR_MARGIN_MS = 250;
 
+export interface IngestCallbacks {
+  /** Push an interim/final transcript back to the originating client (contracts/ws-client-worker.md). */
+  onEvent?: (msg: { type: 'stt_interim' | 'stt_final'; userId: string; clientSeq: number; text: string }) => void;
+}
+
 export async function runIngest(
   stream: SttStream,
   userId: string,
   eventLog: EventLog,
   ownership: Ownership,
+  cb: IngestCallbacks = {},
 ): Promise<void> {
   for await (const ev of stream.events()) {
+    if (ev.kind === 'interim') {
+      cb.onEvent?.({ type: 'stt_interim', userId, clientSeq: ev.data.clientSeq, text: ev.data.text });
+      continue;
+    }
     if (ev.kind !== 'final') continue;
     if (!(await ownership.isOwner())) return; // lost the lease → stop writing (split-brain guard)
     await eventLog.append('utterance_final', {
@@ -40,6 +50,7 @@ export async function runIngest(
       arrivalTs: Date.now(), // server-arrival ordering key (AD-1 / research R1)
       errorMarginMs: DEFAULT_ERROR_MARGIN_MS,
     });
+    cb.onEvent?.({ type: 'stt_final', userId, clientSeq: ev.data.clientSeq, text: ev.data.text });
   }
 }
 
@@ -100,10 +111,14 @@ export function attachSessionWs(app: FastifyInstance, deps: SessionWorkerDeps): 
       }
       const stream = deps.stt.openStream({ userId });
       ws.on('message', (data, isBinary) => {
-        if (isBinary) stream.pushAudio(new Uint8Array(data as Buffer), 0); // seq wired in US1
+        if (isBinary) stream.pushAudio(new Uint8Array(data as Buffer), 0);
       });
       ws.on('close', () => void stream.close());
-      await runIngest(stream, userId, eventLog, ownership);
+      await runIngest(stream, userId, eventLog, ownership, {
+        onEvent: (msg) => {
+          if (ws.readyState === 1 /* OPEN */) ws.send(JSON.stringify(msg));
+        },
+      });
     })();
   });
 

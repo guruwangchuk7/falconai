@@ -11,6 +11,8 @@
  * raw audio (§12.3/R6).
  */
 
+import { DeepgramSttProvider } from './deepgram.js';
+
 /** A finalized utterance for one client. `confidence` is per-vendor calibrated — never compare it
  *  across providers (§12.9). */
 export interface SttFinal {
@@ -121,24 +123,14 @@ export class FakeSttProvider implements SttProvider {
   }
 }
 
-/** Placeholder for a real provider until Deepgram/AssemblyAI land in T015 (mirrors the secrets-store
- *  Infisical stub pattern: fail loudly rather than silently no-op). */
-class UnimplementedSttProvider implements SttProvider {
-  constructor(readonly name: string) {}
-  openStream(_opts: { readonly userId: string }): SttStream {
-    throw new Error(
-      `STT provider "${this.name}" not implemented — configure Deepgram Nova + AssemblyAI failover (research R3, §12.9).`,
-    );
-  }
-}
-
 /**
  * Factory: `FALCON_FAKE_STT` → deterministic fake (keyless, for tests/harness); otherwise the real
- * provider (Deepgram Nova primary, AssemblyAI failover) — NOT YET IMPLEMENTED (throws on use).
+ * Deepgram Nova streaming provider (reads `DEEPGRAM_API_KEY`). AssemblyAI failover slots in behind
+ * `createCircuitBrokenStt` when its key is configured.
  */
 export function createSttProvider(): SttProvider {
   if (process.env.FALCON_FAKE_STT) return new FakeSttProvider();
-  return new UnimplementedSttProvider('deepgram-nova');
+  return new DeepgramSttProvider();
 }
 
 export {
@@ -146,3 +138,4 @@ export {
   calibrateConfidence,
   type CircuitOptions,
 } from './circuit.js';
+export { DeepgramSttProvider };

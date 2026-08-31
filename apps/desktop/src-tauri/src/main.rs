@@ -1,9 +1,7 @@
-// Falcon desktop core (Phase 3, T020) — captures the owner's microphone and emits a live level to
-// the panel (the always-visible capture indicator, §12.4). Raw audio is reduced to an RMS level and
-// then DROPPED — never written to disk, never stored (§12.3/R6). Energy gate stands in for Silero VAD.
-//
-// NOTE: the panel can only RECEIVE these events because `capabilities/default.json` grants
-// `core:event` to the "main" window — Tauri 2 denies event delivery by default.
+// Falcon desktop core (Phase 3, T020 + T021) — captures the owner's mic, drives the always-visible
+// capture indicator (§12.4), and streams the audio to the session worker over WebSocket, showing the
+// transcript the worker sends back. Raw audio is converted to 16-bit PCM frames in flight and never
+// stored (§12.3/R6). Panel event delivery requires the core:event capability (capabilities/default.json).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -11,7 +9,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use futures_util::{SinkExt, StreamExt};
 use tauri::Emitter;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio_tungstenite::tungstenite::Message;
 
 const SPEAKING_RMS: f32 = 0.02;
 
@@ -26,7 +27,6 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             std::thread::spawn(move || {
-                // Let the webview attach its listeners before we start emitting.
                 std::thread::sleep(Duration::from_millis(600));
                 if let Err(e) = run_capture(handle.clone()) {
                     let msg = format!("{e}");
@@ -44,19 +44,24 @@ fn err_fn(e: cpal::StreamError) {
     eprintln!("[falcon] input stream error: {e}");
 }
 
-fn emit_rms(app: &tauri::AppHandle, samples: impl Iterator<Item = f32>) {
-    let mut sum = 0.0f32;
-    let mut n = 0u32;
-    for s in samples {
-        sum += s * s;
-        n += 1;
-    }
-    if n == 0 {
+fn emit_rms(app: &tauri::AppHandle, samples: &[f32]) {
+    if samples.is_empty() {
         return;
     }
-    let rms = (sum / n as f32).sqrt();
-    // Raw samples are gone after this — only the level leaves this function (§12.3/R6).
+    let rms = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
     let _ = app.emit("mic-level", MicLevel { rms, speaking: rms > SPEAKING_RMS });
+}
+
+/// Downmix interleaved f32 samples to mono and pack as little-endian 16-bit PCM (Deepgram linear16).
+fn downmix_pcm(samples: &[f32], channels: usize) -> Vec<u8> {
+    let ch = channels.max(1);
+    let mut out = Vec::with_capacity(samples.len() / ch * 2);
+    for frame in samples.chunks(ch) {
+        let avg = frame.iter().sum::<f32>() / ch as f32;
+        let v = (avg.clamp(-1.0, 1.0) * 32767.0) as i16;
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+    out
 }
 
 fn run_capture(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
@@ -66,20 +71,27 @@ fn run_capture(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         .ok_or("no microphone found (check Windows mic privacy for desktop apps)")?;
     let supported = device.default_input_config()?;
     let fmt = supported.sample_format();
+    let ch = supported.channels() as usize;
     let cfg: cpal::StreamConfig = supported.into();
 
-    // Throttle emits (~1 in 3 callbacks) to keep the panel responsive without flooding the IPC.
+    // PCM frames flow from the audio callback → the WebSocket task, which streams them to the worker.
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+    tauri::async_runtime::spawn(ws_task(app.clone(), rx));
+
     let count = Arc::new(AtomicU64::new(0));
 
     macro_rules! build_stream {
         ($t:ty, $conv:expr) => {{
             let a = app.clone();
             let c = count.clone();
+            let tx = tx.clone();
             device.build_input_stream(
                 &cfg,
                 move |data: &[$t], _: &cpal::InputCallbackInfo| {
+                    let f: Vec<f32> = data.iter().map($conv).collect();
+                    let _ = tx.send(downmix_pcm(&f, ch)); // stream audio up (never stored)
                     if c.fetch_add(1, Ordering::Relaxed) % 3 == 0 {
-                        emit_rms(&a, data.iter().map($conv));
+                        emit_rms(&a, &f);
                     }
                 },
                 err_fn,
@@ -99,8 +111,47 @@ fn run_capture(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     stream.play()?;
     let _ = app.emit("mic-status", "capturing");
 
-    // Keep the stream (and capture) alive for the life of the app.
     loop {
         std::thread::sleep(Duration::from_secs(3600));
     }
 }
+
+/// Connect to the session worker, stream PCM frames up, and forward transcript messages to the panel.
+async fn ws_task(app: tauri::AppHandle, mut rx: UnboundedReceiver<Vec<u8>>) {
+    let url = std::env::var("FALCON_WORKER_WS")
+        .unwrap_or_else(|_| "ws://127.0.0.1:8787/session/demo/connect?userId=me".to_string());
+
+    let (ws, _) = match tokio_tungstenite::connect_async(&url).await {
+        Ok(x) => x,
+        Err(e) => {
+            let _ = app.emit("mic-status", format!("worker offline: {e}"));
+            // Drain audio so the channel doesn't grow unbounded while the worker is down.
+            while rx.recv().await.is_some() {}
+            return;
+        }
+    };
+    let _ = app.emit("mic-status", "connected");
+    let (mut sink, mut stream) = ws.split();
+
+    // Reader: transcript messages from the worker → the panel.
+    let app2 = app.clone();
+    let reader = tauri::async_runtime::spawn(async move {
+        while let Some(Ok(msg)) = stream.next().await {
+            if let Message::Text(t) = msg {
+                let _ = app2.emit("transcript", t.to_string());
+            }
+        }
+    });
+
+    // Writer: PCM frames → the worker.
+    while let Some(pcm) = rx.recv().await {
+        if sink.send(Message::Binary(pcm.into())).await.is_err() {
+            break;
+        }
+    }
+    reader.abort();
+}
+
+// Silence the unused warning for the sender type alias in some build configs.
+#[allow(dead_code)]
+type _PcmSender = UnboundedSender<Vec<u8>>;

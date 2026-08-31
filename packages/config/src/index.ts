@@ -51,6 +51,12 @@ export const authEnv = z.object({
   AUTH_SECRET: nonEmpty,
 });
 
+export const sttEnv = z.object({
+  // Deepgram Nova streaming STT (primary). AssemblyAI failover key optional.
+  DEEPGRAM_API_KEY: nonEmpty,
+  ASSEMBLYAI_API_KEY: z.string().optional(),
+});
+
 /** Parse a schema against process.env, throwing a readable aggregate error on failure. */
 export function loadEnv<T extends z.ZodTypeAny>(schema: T, source: NodeJS.ProcessEnv = process.env): z.infer<T> {
   const parsed = schema.safeParse(source);

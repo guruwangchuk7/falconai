@@ -5,8 +5,13 @@
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@falcon/config": "workspace:*",
+    "ws": "^8.18.0"
+  },
   "devDependencies": {
     "@types/node": "24",
+    "@types/ws": "^8.5.13",
     "typescript": "^5.6.0"
   }
 }
