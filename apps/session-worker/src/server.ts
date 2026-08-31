@@ -109,16 +109,25 @@ export function attachSessionWs(app: FastifyInstance, deps: SessionWorkerDeps): 
         ws.close(1013, 'not session owner'); // another live worker holds the lease
         return;
       }
+      // Renew the lease on a heartbeat while the connection is alive — otherwise it expires (~3s TTL)
+      // and runIngest's split-brain guard stops forwarding transcripts mid-session.
+      const heartbeat = setInterval(() => {
+        void ownership.renew();
+      }, 1000);
       const stream = deps.stt.openStream({ userId });
       ws.on('message', (data, isBinary) => {
         if (isBinary) stream.pushAudio(new Uint8Array(data as Buffer), 0);
       });
-      ws.on('close', () => void stream.close());
+      ws.on('close', () => {
+        clearInterval(heartbeat);
+        void stream.close();
+      });
       await runIngest(stream, userId, eventLog, ownership, {
         onEvent: (msg) => {
           if (ws.readyState === 1 /* OPEN */) ws.send(JSON.stringify(msg));
         },
       });
+      clearInterval(heartbeat);
     })();
   });
 
