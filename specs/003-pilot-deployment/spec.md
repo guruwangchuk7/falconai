@@ -150,8 +150,15 @@ The dominant *variable* cost is AI usage (Anthropic + Voyage), not hosting. See 
   (Guru — require `typecheck`+`integration`+`e2e`+`no-token-in-db` + require PR; ends direct-push),
   **[3] secrets backend — DONE: co-locate (D3)**, **[4] `SECRETS_KEK`** (`openssl rand -base64 32` at
   deploy).
-- [ ] `apps/web/Dockerfile`, `apps/worker/Dockerfile`, `.dockerignore`, `fly.web.toml`, `fly.worker.toml`.
-- [ ] Add `/api/health` route (if missing) for Fly checks.
+- [x] **Containerize (co-located, D3) — DONE + build-verified 2026-08-31:** `Dockerfile.pilot`,
+  `.dockerignore`, `fly.pilot.toml` (single always-on machine + `/data` volume for the file secrets
+  store), `scripts/start-pilot.sh` (runs worker + web; exits if either dies → Fly restarts). `docker
+  build` green and the image boots (`next start` ready ~1s; `/api/health` → 200). The two-Dockerfile
+  split (`apps/web` + `apps/worker` + `fly.web/worker.toml`) is the post-pilot target.
+- [x] **`/api/health` route — DONE:** `apps/web/app/api/health/route.ts` (pure liveness).
+- [x] **Prereq bugfix (found by the build):** `next build` rejected non-handler exports from the
+  Linear connect route; moved `LINEAR_STATE_COOKIE`/`linearRedirectUri` to `apps/web/lib/linear-oauth.ts`.
+  Root cause: CI runs `tsc`/`next dev`, never `next build` — add a `build` job to `ci.yml` to catch this.
 - [ ] `fly secrets set …` for web + worker.
 - [ ] Migrate prod DB; confirm `falcon_app` role + grants.
 - [ ] GitHub App prod callback/webhook/Setup URLs.

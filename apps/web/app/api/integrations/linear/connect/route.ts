@@ -3,16 +3,9 @@ import { NextResponse } from 'next/server';
 import { linearEnv, loadEnv } from '@falcon/config';
 import { rateLimit } from '@falcon/queue';
 import { getActiveSession } from '@/lib/session';
+import { LINEAR_STATE_COOKIE, linearRedirectUri } from '@/lib/linear-oauth';
 
 export const runtime = 'nodejs';
-
-/** CSRF state cookie shared with the Linear callback (double-submit token). */
-export const LINEAR_STATE_COOKIE = 'linear_oauth_state';
-
-/** Redirect URI Linear calls back — must match one registered on the OAuth application. */
-export function linearRedirectUri(reqUrl: string): string {
-  return new URL('/api/integrations/linear/callback', reqUrl).toString();
-}
 
 /** Start Linear's OAuth2 flow. Unlike the GitHub App (installation-based), Linear returns an
  *  authorization `code` we exchange for an access token in the callback. A high-entropy `state`

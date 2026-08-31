@@ -1,0 +1,42 @@
+# Fly.io config — Falcon PILOT (co-located web + worker, D3, specs/003-pilot-deployment).
+# Deploy:  fly deploy -c fly.pilot.toml
+# Secrets: set via `fly secrets set KEY=… -a falcon-pilot` (see spec §5.2) — NOT committed here.
+
+app = "falcon-pilot"
+# Pick the region nearest your users AND your Supabase project to cut DB round-trips.
+# e.g. "sin" (Singapore) or "bom" (Mumbai) for South/Southeast Asia. Adjust before first deploy.
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile.pilot"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  # SECRETS_BACKEND defaults to "file"; the co-located worker + web share the encrypted store on the
+  # machine's local FS. SECRETS_FILE_PATH points at a persistent path (see [mounts] below).
+  SECRETS_FILE_PATH = "/data/secrets/store.enc.json"
+
+# One always-on machine runs BOTH processes (web foreground + worker background via start-pilot.sh).
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false   # the co-located BullMQ worker must never be stopped on idle
+  auto_start_machines = true
+  min_machines_running = 1     # always-on so scheduled/queued jobs aren't dropped
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "30s"
+    method = "GET"
+    path = "/api/health"
+
+# Persist the encrypted secrets store (and any local state) across deploys/restarts.
+[mounts]
+  source = "falcon_pilot_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"   # web + worker + in-flight retrieval context; bump to 2gb if OOM under sync load

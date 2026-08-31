@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+# Falcon PILOT image — co-located web + worker (D3, specs/003-pilot-deployment).
+# Built from the monorepo ROOT: `docker build -f Dockerfile.pilot .`
+# Rationale for shipping the whole workspace into the runtime image: the web app uses
+# `transpilePackages` (no `output: standalone`) and the worker runs via `tsx` at runtime, so both
+# need the workspace packages' TypeScript SOURCE present — a pruned/standalone bundle would break them.
+
+FROM node:24-bookworm-slim AS base
+ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH CI=1
+RUN corepack enable
+WORKDIR /app
+
+# ---- build: install all deps (incl. dev: tsx, next) and build the web app ----
+FROM base AS build
+COPY . .
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @falcon/web build
+
+# ---- runtime: carry the built workspace; run both processes via the launcher ----
+FROM base AS runtime
+ENV NODE_ENV=production PORT=3000
+COPY --from=build /app /app
+EXPOSE 3000
+CMD ["bash", "scripts/start-pilot.sh"]
