@@ -17,7 +17,8 @@ const listen = g && g.event && g.event.listen;
 if (listen) {
   listen('mic-level', (evt) => {
     const { rms, speaking } = evt.payload;
-    bar.style.width = Math.min(100, Math.round(rms * 600)) + '%';
+    // Amplify generously so quiet mics still show a clearly moving bar.
+    bar.style.width = Math.min(100, Math.round(rms * 2500)) + '%';
     dot.classList.toggle('on', !!speaking);
     capLabel.textContent = speaking ? 'Speaking' : 'Mic on';
   });

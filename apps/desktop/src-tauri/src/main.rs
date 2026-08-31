@@ -14,7 +14,7 @@ use tauri::Emitter;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio_tungstenite::tungstenite::Message;
 
-const SPEAKING_RMS: f32 = 0.02;
+const SPEAKING_RMS: f32 = 0.008;
 
 #[derive(Clone, serde::Serialize)]
 struct MicLevel {
@@ -111,45 +111,51 @@ fn run_capture(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     stream.play()?;
     let _ = app.emit("mic-status", "capturing");
 
+    // Keep the stream (and capture) alive for the life of the app.
     loop {
         std::thread::sleep(Duration::from_secs(3600));
     }
 }
 
 /// Connect to the session worker, stream PCM frames up, and forward transcript messages to the panel.
+/// Auto-reconnects, so the worker and desktop can be started in any order.
 async fn ws_task(app: tauri::AppHandle, mut rx: UnboundedReceiver<Vec<u8>>) {
     let url = std::env::var("FALCON_WORKER_WS")
         .unwrap_or_else(|_| "ws://127.0.0.1:8787/session/demo/connect?userId=me".to_string());
 
-    let (ws, _) = match tokio_tungstenite::connect_async(&url).await {
-        Ok(x) => x,
-        Err(e) => {
-            let _ = app.emit("mic-status", format!("worker offline: {e}"));
-            // Drain audio so the channel doesn't grow unbounded while the worker is down.
-            while rx.recv().await.is_some() {}
-            return;
-        }
-    };
-    let _ = app.emit("mic-status", "connected");
-    let (mut sink, mut stream) = ws.split();
+    loop {
+        match tokio_tungstenite::connect_async(&url).await {
+            Ok((ws, _)) => {
+                let _ = app.emit("mic-status", "connected");
+                let (mut sink, mut stream) = ws.split();
 
-    // Reader: transcript messages from the worker → the panel.
-    let app2 = app.clone();
-    let reader = tauri::async_runtime::spawn(async move {
-        while let Some(Ok(msg)) = stream.next().await {
-            if let Message::Text(t) = msg {
-                let _ = app2.emit("transcript", t.to_string());
+                // Reader: transcript messages from the worker → the panel.
+                let app2 = app.clone();
+                let reader = tauri::async_runtime::spawn(async move {
+                    while let Some(Ok(msg)) = stream.next().await {
+                        if let Message::Text(t) = msg {
+                            let _ = app2.emit("transcript", t.to_string());
+                        }
+                    }
+                });
+
+                // Writer: PCM frames → the worker, until the socket breaks.
+                while let Some(pcm) = rx.recv().await {
+                    if sink.send(Message::Binary(pcm.into())).await.is_err() {
+                        break;
+                    }
+                }
+                reader.abort();
+                let _ = app.emit("mic-status", "reconnecting…");
+            }
+            Err(_) => {
+                let _ = app.emit("mic-status", "worker offline — retrying");
             }
         }
-    });
-
-    // Writer: PCM frames → the worker.
-    while let Some(pcm) = rx.recv().await {
-        if sink.send(Message::Binary(pcm.into())).await.is_err() {
-            break;
-        }
+        // Drop audio buffered while disconnected, then wait before reconnecting.
+        while rx.try_recv().is_ok() {}
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
-    reader.abort();
 }
 
 // Silence the unused warning for the sender type alias in some build configs.
