@@ -11,19 +11,25 @@ const empty = document.getElementById('empty');
 const pair = document.getElementById('pair');
 
 // --- Capture indicator: driven by the Rust cpal capture thread (emits { rms, speaking }). ---
-const tauri = window.__TAURI__;
-if (tauri?.event?.listen) {
-  tauri.event.listen('mic-level', (evt) => {
+// Event delivery requires the `core:event` capability (see src-tauri/capabilities/default.json).
+const g = window.__TAURI__;
+const listen = g && g.event && g.event.listen;
+if (listen) {
+  listen('mic-level', (evt) => {
     const { rms, speaking } = evt.payload;
     bar.style.width = Math.min(100, Math.round(rms * 600)) + '%';
     dot.classList.toggle('on', !!speaking);
     capLabel.textContent = speaking ? 'Speaking' : 'Mic on';
   });
-  // Status/errors from the capture thread (e.g. no mic / blocked by privacy settings).
-  tauri.event.listen('mic-status', (evt) => {
+  // Status/errors from the capture thread (e.g. no mic / unsupported format).
+  listen('mic-status', (evt) => {
     const s = String(evt.payload || '');
-    capLabel.textContent = s === 'capturing' ? 'Mic on' : `Mic: ${s.slice(0, 40)}`;
-    if (s !== 'capturing') capLabel.title = s;
+    if (s === 'capturing') {
+      if (capLabel.textContent === 'Mic off') capLabel.textContent = 'Mic on';
+    } else {
+      capLabel.textContent = `Mic: ${s.slice(0, 40)}`;
+      capLabel.title = s;
+    }
   });
 } else {
   capLabel.textContent = 'Mic (browser)';
