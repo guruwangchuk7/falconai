@@ -1,8 +1,8 @@
 // Phase 3 (spec 004-pairing, T023) — server-arrival ordering (AD-1 / research R1): order by arrival,
 // mark ambiguous when error margins overlap (F5.3/R5), never drop, preserve gaps (§12.6).
 import { it, expect } from 'vitest';
-import { mergeUtterances, mergedTranscript, type RawUtterance } from '../../apps/session-worker/src/merge.js';
-import type { SessionEvent } from '../../apps/session-worker/src/eventlog.js';
+import { mergeUtterances, mergedTranscript, type RawUtterance } from '@falcon/session-core';
+import type { SessionEvent } from '@falcon/session-core';
 
 const u = (seq: number, userId: string, text: string, arrivalTs: number, errorMarginMs = 10): RawUtterance => ({
   seq,

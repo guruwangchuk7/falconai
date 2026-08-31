@@ -6,7 +6,7 @@ import { it, expect, beforeAll, afterAll } from 'vitest';
 import { Redis } from 'ioredis';
 import { FakeSttProvider } from '@falcon/stt';
 import { createSessionApp, runIngest, parseConnUrl } from '../../apps/session-worker/src/server.js';
-import { createEventLog, type SessionEvent } from '../../apps/session-worker/src/eventlog.js';
+import { createEventLog, type SessionEvent } from '@falcon/session-core';
 import { createOwnership } from '../../apps/session-worker/src/ownership.js';
 import { startTestRedis, type TestRedis } from '../support/redis.js';
 

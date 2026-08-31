@@ -5,9 +5,9 @@ import { it, expect, beforeAll, afterAll } from 'vitest';
 import { Redis } from 'ioredis';
 import { FakeSttProvider } from '@falcon/stt';
 import { runIngest } from '../../apps/session-worker/src/server.js';
-import { createEventLog, type SessionEvent } from '../../apps/session-worker/src/eventlog.js';
+import { createEventLog, type SessionEvent } from '@falcon/session-core';
 import { createOwnership } from '../../apps/session-worker/src/ownership.js';
-import { mergedTranscript } from '../../apps/session-worker/src/merge.js';
+import { mergedTranscript } from '@falcon/session-core';
 import { startTestRedis, type TestRedis } from '../support/redis.js';
 
 let tr: TestRedis;

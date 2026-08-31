@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Redis } from 'ioredis';
 import type { SttProvider, SttStream } from '@falcon/stt';
-import { createEventLog, type EventLog } from './eventlog.js';
+import { createEventLog, type EventLog } from '@falcon/session-core';
 import { createOwnership, type Ownership, ownerFor } from './ownership.js';
 
 /** Build the Fastify app (health + readiness). Kept separate so it is injectable in tests. */

@@ -13,13 +13,17 @@ const h = vi.hoisted(() => ({ session: null as { userId: string; workspaceId: st
 
 vi.mock('@/lib/session', () => ({ getActiveSession: async () => h.session }));
 vi.mock('@/lib/deps', () => ({ deps: () => ({ db: h.db }), secrets: () => { throw new Error('unused'); } }));
-vi.mock('@falcon/queue', () => ({ rateLimit: async () => ({ ok: true, remaining: 999 }) }));
+vi.mock('@falcon/queue', () => ({
+  rateLimit: async () => ({ ok: true, remaining: 999 }),
+  conn: () => { throw new Error('conn() must not be reached on the non-member 404 path'); },
+}));
 vi.mock('@falcon/observability', () => ({ captureException: () => {}, captureEvent: () => {} }));
 
 import { POST as resolvePOST } from '@/app/api/session/resolve/route';
 import { POST as joinPOST } from '@/app/api/session/join-by-code/route';
 import { POST as codePOST } from '@/app/api/session/[id]/code/route';
 import { GET as sessionGET } from '@/app/api/session/[id]/route';
+import { GET as streamGET } from '@/app/api/session/[id]/stream/route';
 import { POST as consentPOST } from '@/app/api/consent/pair/route';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -100,4 +104,12 @@ it('a cross-tenant session id is invisible (RLS floor → 404)', async () => {
   asUser(UC, B); // different workspace
   const res = await sessionGET(new Request('http://t/'), { params: Promise.resolve({ id: sess.sessionId }) });
   expect(res.status).toBe(404);
+});
+
+it('the SSE transcript stream is membership-gated (non-member → 404, before any Redis access)', async () => {
+  asUser(UA, A);
+  const sess = await (await resolvePOST(req({ calendarEventId: 'evt-sse' }))).json();
+  asUser(UC, B); // not a member
+  const res = await streamGET(new Request('http://t/'), { params: Promise.resolve({ id: sess.sessionId }) });
+  expect(res.status).toBe(404); // getSessionView throws before conn() is touched (mock would throw)
 });
