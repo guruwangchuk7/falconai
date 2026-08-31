@@ -4,9 +4,6 @@ version = "0.0.0"
 edition = "2021"
 description = "Falcon desktop client — captures the owner's mic (VAD-gated) and streams it to the session worker."
 
-# NOTE: building requires the Rust toolchain (rustup + platform build tools) + the Tauri CLI.
-# See ../README.md. Not built in CI yet (Phase 3 scaffold).
-
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -14,8 +11,12 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# Phase 3 — to be wired (T020): cpal (mic capture), ort (Silero VAD via ONNX Runtime),
-# tokio-tungstenite (WebSocket to the session worker).
+# Mic capture (T020). VAD here is a simple energy gate for the MVP; Silero VAD (ONNX) is the upgrade.
+cpal = "0.15"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+
+[[bin]]
+name = "falcon-desktop"
+path = "src/main.rs"

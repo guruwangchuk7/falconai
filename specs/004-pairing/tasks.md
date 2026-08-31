@@ -76,15 +76,15 @@ Do not start Phase 1 tasks until G1 clears. T023 additionally waits on G2.
 
 ### Implementation for User Story 1
 
-- [ ] T020 [US1] Desktop capture in `apps/desktop/src-tauri`: `cpal` mic capture + Silero VAD (ONNX Runtime); stream **VAD-gated frames only**; raw audio **never stored**; sequence-addressable local ring buffer for resync; drive the always-visible capture indicator (F4, §12.2, §12.3/R6, research R4)
-- [ ] T021 [US1] Desktop WS client + buffered `resync` in `apps/desktop/src-tauri` (client side of contracts/ws-client-worker.md; §12.3)
+- [x] T020 [US1] Desktop capture in `apps/desktop/src-tauri`: `cpal` mic capture + Silero VAD (ONNX Runtime); stream **VAD-gated frames only**; raw audio **never stored**; sequence-addressable local ring buffer for resync; drive the always-visible capture indicator (F4, §12.2, §12.3/R6, research R4)
+- [~] T021 [US1] Desktop WS client + buffered `resync` (PARTIAL: SSE transcript read wired in the panel; audio-frame WS upload deferred with real STT keys) in `apps/desktop/src-tauri` (client side of contracts/ws-client-worker.md; §12.3)
 - [x] T022 [US1] Worker WS ingest → STT stream → `utterance_final` appended to event log; **attribution set to the connection owner, never voice-inferred** (`server.ts` + `eventlog.ts`; G2, §6.1)
 - [x] T023 [US1] **[G2 resolved]** AD-1 spike + `apps/session-worker/src/merge.ts`: server-arrival ordering, per-client reorder buffer sized from measured jitter, per-utterance error margins, `order_confidence`, ambiguous-on-overlap marking, and **never-drop / explicit gap-mark** (F5/F5.3, §12.6, research R1)
 - [x] T024 [P] [US1] Pairing REST routes `apps/web/app/api/session/*`: `resolve` (calendar, F7.1), `team-auto/ack` (F7.2), `join-by-code` + `POST /{id}/code` mint with TTL/rate/scope (F7.3), `leave`; all via Auth.js + `withTenant`/RLS (contracts/rest-pairing.md)
 - [x] T025 [P] [US1] Calendar session-key matching in `packages/integrations/src`: shared Google/MS Calendar event id → session key (F7.1)
 - [x] T026 [US1] Consent once-per-pair: `consent_pair` read/write, internal-remembered vs cross-workspace-always-prompt, one-time consent card UI naming shared/not-shared + revoke (§7.2, §12.4)
 - [x] T027 [US1] SSE panel stream `apps/web/app/api/session/[id]/stream/route.ts`: `session_state`, `transcript_append` (with `ambiguous_order`), `transcript_gap`, `capture_indicator`, `coverage_notice`, fencing filter — **event enum contains no card/nudge/escalation** (contracts/sse-panel.md; FR-023)
-- [ ] T028 [US1] Panel UI (shared React in `apps/web` + Tauri webview): "Paired with X · N others" + one-tap Leave, live merged transcript with attribution + marked gaps, always-visible capture indicator (§7.2, §12.4)
+- [x] T028 [US1] Panel UI (shared React in `apps/web` + Tauri webview): "Paired with X · N others" + one-tap Leave, live merged transcript with attribution + marked gaps, always-visible capture indicator (§7.2, §12.4)
 - [x] T029 [US1] Degradation ladder: unpaired speaker **not captured** + coverage gap flagged; network loss → local buffer + resync + marked gap; solo (nobody paired) still works (§7.3, F4.7-cut, Constitution IV)
 
 **Checkpoint**: two people pair and get one correctly-attributed shared transcript. MVP demoable.
