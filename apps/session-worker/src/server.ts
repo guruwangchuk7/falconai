@@ -20,6 +20,10 @@ export function createSessionApp(): FastifyInstance {
  * lease is lost mid-session (another worker claimed it), appends stop immediately: a zombie worker
  * cannot write. Raw audio is never persisted — only the finalized transcript event is (§12.3/R6).
  */
+/** Default per-utterance ordering uncertainty until the desktop client reports real per-connection
+ *  jitter/RTT variance (T021). merge.ts uses this to mark ambiguous ordering (F5.3). */
+const DEFAULT_ERROR_MARGIN_MS = 250;
+
 export async function runIngest(
   stream: SttStream,
   userId: string,
@@ -33,6 +37,8 @@ export async function runIngest(
       userId, // attribution by construction (the connection's owner)
       clientSeq: ev.data.clientSeq,
       text: ev.data.text,
+      arrivalTs: Date.now(), // server-arrival ordering key (AD-1 / research R1)
+      errorMarginMs: DEFAULT_ERROR_MARGIN_MS,
     });
   }
 }

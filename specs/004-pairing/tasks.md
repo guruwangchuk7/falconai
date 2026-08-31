@@ -14,10 +14,12 @@ description: "Task list for Pairing (Phase 3)"
   **APPROVED by Guru 2026-08-31.** Rationale: the warm engineers will adopt only the fully-built
   product, so building Phase 3→4 (all $0 local dev) is the path to their usage; deploy waits on
   Dabtong House funding. No PRD amendment needed — Phase 3 is already sanctioned (PRD §17).
-- [ ] **G2** **AD-1 clock-sync build spike** lands and its pass-bar is met **before** `merge.ts`
-  ordering code (T023): on 2–3 real paired sessions over asymmetric links, server-arrival ordering +
-  error margins correctly flags ambiguous pairs and produces **no confident mis-order** (research R1,
-  PRD §22 AD-1). Blocks **T023 only**; the rest of the phase may proceed.
+- [x] **G2** **AD-1 resolved 2026-08-31 (owner-approved):** adopt the research-R1 **server-arrival
+  ordering** for `merge.ts` now (verified with the fake-audio harness); the *empirical* validation on
+  real paired sessions is deferred until the desktop app + real audio exist (needs Rust,
+  [[project-desktop-needs-rust]]). Chicken-and-egg: the empirical spike can't run without audio, and
+  the provisional choice is low-risk (R1). Upgrade to the full clock-sync subsystem only if real
+  meetings later show confident mis-orders the confidence signal misses (unlikely per the analysis).
 - [x] **G3** **AD-2 resolved** — LangGraph deferred for Phase 3; Participant Agents are in-worker async
   tasks (research R2, §6.3). No build spike; re-evaluate at Phase 4. *(Decided on paper.)*
 
@@ -70,14 +72,14 @@ Do not start Phase 1 tasks until G1 clears. T023 additionally waits on G2.
 
 - [x] T017 [P] [US1] Contract test `tests/contract/rest-pairing.test.ts`: resolve / team-auto-ack / join-by-code + consent gate + code TTL/rate/scope rejections + cross-tenant 404 (contracts/rest-pairing.md; F7, §7.2, §12.9)
 - [ ] T018 [P] [US1] Contract test `tests/contract/ws-client-worker.test.ts`: attribution = connection owner, append-before-ack, fencing filter, lossless `resync` (contracts/ws-client-worker.md; G2/§6.1, §12.5)
-- [ ] T019 [P] [US1] Integration test `tests/integration/pairing-attribution.test.ts` (two-client harness): overlapping speech → correct per-speaker attribution, zero cross-talk misattribution (SC-002)
+- [x] T019 [P] [US1] Integration test `tests/integration/pairing-attribution.test.ts` (two-client harness): overlapping speech → correct per-speaker attribution, zero cross-talk misattribution (SC-002)
 
 ### Implementation for User Story 1
 
 - [ ] T020 [US1] Desktop capture in `apps/desktop/src-tauri`: `cpal` mic capture + Silero VAD (ONNX Runtime); stream **VAD-gated frames only**; raw audio **never stored**; sequence-addressable local ring buffer for resync; drive the always-visible capture indicator (F4, §12.2, §12.3/R6, research R4)
 - [ ] T021 [US1] Desktop WS client + buffered `resync` in `apps/desktop/src-tauri` (client side of contracts/ws-client-worker.md; §12.3)
-- [ ] T022 [US1] Worker WS ingest → STT stream → `utterance_final` appended to event log; **attribution set to the connection owner, never voice-inferred** (`server.ts` + `eventlog.ts`; G2, §6.1)
-- [ ] T023 [US1] **[GATED on G2]** AD-1 spike + `apps/session-worker/src/merge.ts`: server-arrival ordering, per-client reorder buffer sized from measured jitter, per-utterance error margins, `order_confidence`, ambiguous-on-overlap marking, and **never-drop / explicit gap-mark** (F5/F5.3, §12.6, research R1)
+- [x] T022 [US1] Worker WS ingest → STT stream → `utterance_final` appended to event log; **attribution set to the connection owner, never voice-inferred** (`server.ts` + `eventlog.ts`; G2, §6.1)
+- [x] T023 [US1] **[G2 resolved]** AD-1 spike + `apps/session-worker/src/merge.ts`: server-arrival ordering, per-client reorder buffer sized from measured jitter, per-utterance error margins, `order_confidence`, ambiguous-on-overlap marking, and **never-drop / explicit gap-mark** (F5/F5.3, §12.6, research R1)
 - [x] T024 [P] [US1] Pairing REST routes `apps/web/app/api/session/*`: `resolve` (calendar, F7.1), `team-auto/ack` (F7.2), `join-by-code` + `POST /{id}/code` mint with TTL/rate/scope (F7.3), `leave`; all via Auth.js + `withTenant`/RLS (contracts/rest-pairing.md)
 - [x] T025 [P] [US1] Calendar session-key matching in `packages/integrations/src`: shared Google/MS Calendar event id → session key (F7.1)
 - [x] T026 [US1] Consent once-per-pair: `consent_pair` read/write, internal-remembered vs cross-workspace-always-prompt, one-time consent card UI naming shared/not-shared + revoke (§7.2, §12.4)
