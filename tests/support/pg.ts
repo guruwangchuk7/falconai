@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MIGRATION = resolve(HERE, '../../packages/db/drizzle/0001_init.sql');
+// 0004 adds decision_record.dismissed_at, which the SHARED answer path (answerQuestion →
+// matchUnconfirmedCandidates) now reads. Applied in the base so every test DB has it — it is an
+// idempotent `ADD COLUMN IF NOT EXISTS`, so tests that also apply it explicitly still work.
+const MIGRATION_DISMISSED = resolve(HERE, '../../packages/db/drizzle/0004_decision_dismissed_at.sql');
 
 export interface TestDb {
   container: StartedPostgreSqlContainer;
@@ -31,6 +35,7 @@ export async function startTestDb(): Promise<TestDb> {
   const admin = postgres(adminUrl, { prepare: false });
 
   await admin.unsafe(readFileSync(MIGRATION, 'utf8'));
+  await admin.unsafe(readFileSync(MIGRATION_DISMISSED, 'utf8'));
   await admin.unsafe(`
     create role falcon_app login password 'app';
     grant usage on schema public to falcon_app;
