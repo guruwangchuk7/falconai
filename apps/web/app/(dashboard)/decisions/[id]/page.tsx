@@ -62,6 +62,11 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
             <Link href={`/decisions/${d.supersedesId}`} className="underline">{d.supersedesTitle ?? d.supersedesId}</Link>
           </Row>
         )}
+        {d.supersededById && (
+          <Row label="Superseded by">
+            <Link href={`/decisions/${d.supersededById}`} className="underline">{d.supersededByTitle ?? d.supersededById}</Link>
+          </Row>
+        )}
         {d.confirmedAt && <Row label="Confirmed">{new Date(d.confirmedAt).toLocaleString()}{d.confirmedBy ? ` · ${d.confirmedBy}` : ''}</Row>}
         <Row label="Created">{new Date(d.createdAt).toLocaleString()}</Row>
       </div>

@@ -164,17 +164,17 @@ shown in detail.
 
 ### Tests for US3 ⚠️
 
-- [ ] T028 [P] [US3] Integration test `packages/core/src/decisions.int.test.ts` (append): supersede flips
+- [X] T028 [P] [US3] Integration test `packages/core/src/decisions.int.test.ts` (append): supersede flips
   old→`superseded`, links `supersedes_id`, excludes old from `searchDecisions`; idempotent.
 
 ### Implementation for US3
 
-- [ ] T029 [US3] Implement `supersedeDecision(deps, workspaceId, {newRecordId, supersedesId})` in
+- [X] T029 [US3] Implement `supersedeDecision(deps, workspaceId, {newRecordId, supersedesId})` in
   `packages/core/src/decisions.ts` — require new record confirmed; set its `supersedes_id`; flip old →
   `superseded`; idempotent; via `withTenant`. Export.
-- [ ] T030 [US3] Add `PATCH {action:'supersede', supersedesId}` to
+- [X] T030 [US3] Add `PATCH {action:'supersede', supersedesId}` to
   `apps/web/app/api/decisions/[id]/route.ts`.
-- [ ] T031 [US3] Show the supersede chain (A→B) in `DecisionDetail.tsx`
+- [X] T031 [US3] Show the supersede chain (A→B) in `DecisionDetail.tsx`
   (`apps/web/app/(dashboard)/decisions/[id]/`).
 
 **Checkpoint**: US1–US3 independently functional.
@@ -190,16 +190,16 @@ miner does not recreate it.
 
 ### Tests for US4 ⚠️
 
-- [ ] T032 [P] [US4] Integration test `packages/core/src/decisions.int.test.ts` (append): `dismissDecision`
+- [X] T032 [P] [US4] Integration test `packages/core/src/decisions.int.test.ts` (append): `dismissDecision`
   sets `dismissed_at`, removes it from `listQueue` and `matchUnconfirmedCandidates`; idempotent; rejects
   dismiss on confirmed/superseded.
 
 ### Implementation for US4
 
-- [ ] T033 [US4] Implement `dismissDecision(deps, workspaceId, id)` in `packages/core/src/decisions.ts` —
+- [X] T033 [US4] Implement `dismissDecision(deps, workspaceId, id)` in `packages/core/src/decisions.ts` —
   set `dismissed_at=now()` on an unconfirmed row; reject confirmed/superseded; idempotent; via
   `withTenant`. Export.
-- [ ] T034 [US4] Add `PATCH {action:'dismiss'}` to `apps/web/app/api/decisions/[id]/route.ts` and a
+- [X] T034 [US4] Add `PATCH {action:'dismiss'}` to `apps/web/app/api/decisions/[id]/route.ts` and a
   Dismiss action on each queue item in `decisions/page.tsx`.
 
 **Checkpoint**: Ship 1 complete (US1–US4). Run Quickstart A–F.

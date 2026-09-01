@@ -19,12 +19,12 @@ export function QueueList({ items }: { items: QueueItemView[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
 
-  async function confirm(id: string) {
+  async function act(id: string, action: 'confirm' | 'dismiss') {
     setBusy(id);
     await fetch(`/api/decisions/${id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'confirm' }),
+      body: JSON.stringify({ action }),
     });
     setBusy(null);
     router.refresh();
@@ -40,13 +40,22 @@ export function QueueList({ items }: { items: QueueItemView[] }) {
             {it.decision && <div className="truncate text-sm text-body">{it.decision}</div>}
             {it.sourceRef && <div className="text-xs text-muted">source: {it.sourceRef}</div>}
           </div>
-          <button
-            onClick={() => confirm(it.id)}
-            disabled={busy === it.id}
-            className="shrink-0 rounded bg-ink px-3 py-1.5 text-xs text-white disabled:opacity-50"
-          >
-            {busy === it.id ? 'Confirming…' : 'Confirm'}
-          </button>
+          <div className="flex shrink-0 gap-2">
+            <button
+              onClick={() => act(it.id, 'confirm')}
+              disabled={busy === it.id}
+              className="rounded bg-ink px-3 py-1.5 text-xs text-white disabled:opacity-50"
+            >
+              {busy === it.id ? '…' : 'Confirm'}
+            </button>
+            <button
+              onClick={() => act(it.id, 'dismiss')}
+              disabled={busy === it.id}
+              className="rounded border border-hairline px-3 py-1.5 text-xs text-muted hover:text-ink disabled:opacity-50"
+            >
+              Dismiss
+            </button>
+          </div>
         </li>
       ))}
     </ul>

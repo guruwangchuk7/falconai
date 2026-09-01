@@ -101,6 +101,55 @@ export async function confirmDecision(
   });
 }
 
+/**
+ * Supersede a confirmed decision with a newer confirmed one (US3, F10.1/R23). Links the new record to
+ * the old via `supersedes_id` and flips the old record to `superseded` so it stops surfacing as live —
+ * a reversed decision is never presented as current. The new record MUST be confirmed. Idempotent: an
+ * already-superseded old record is a no-op. Self-supersede is refused.
+ */
+export async function supersedeDecision(
+  deps: CoreDeps,
+  workspaceId: string,
+  args: { newRecordId: string; supersedesId: string },
+): Promise<{ superseded: boolean }> {
+  if (args.newRecordId === args.supersedesId) return { superseded: false };
+  return deps.db.withTenant(workspaceId, async (tx) => {
+    const [nw] = await tx
+      .select({ status: schema.decisionRecord.status })
+      .from(schema.decisionRecord)
+      .where(eq(schema.decisionRecord.id, args.newRecordId))
+      .limit(1);
+    if (!nw || nw.status !== 'confirmed') return { superseded: false }; // only a confirmed record can supersede
+    await tx
+      .update(schema.decisionRecord)
+      .set({ supersedesId: args.supersedesId })
+      .where(eq(schema.decisionRecord.id, args.newRecordId));
+    const res = await tx
+      .update(schema.decisionRecord)
+      .set({ status: 'superseded' })
+      .where(and(eq(schema.decisionRecord.id, args.supersedesId), eq(schema.decisionRecord.status, 'confirmed')))
+      .returning({ id: schema.decisionRecord.id });
+    return { superseded: res.length > 0 };
+  });
+}
+
+/**
+ * Dismiss an unconfirmed candidate (US4). Sets `dismissed_at` (a tombstone, orthogonal to `status`) so
+ * it never grounds, never surfaces as answer status metadata, and (Ship 2) is never re-suggested for
+ * the same source. Only an un-dismissed `unconfirmed` row can be dismissed; confirmed/superseded are
+ * refused. Idempotent.
+ */
+export async function dismissDecision(deps: CoreDeps, workspaceId: string, id: string): Promise<{ dismissed: boolean }> {
+  return deps.db.withTenant(workspaceId, async (tx) => {
+    const res = await tx
+      .update(schema.decisionRecord)
+      .set({ dismissedAt: new Date() })
+      .where(and(eq(schema.decisionRecord.id, id), eq(schema.decisionRecord.status, 'unconfirmed'), isNull(schema.decisionRecord.dismissedAt)))
+      .returning({ id: schema.decisionRecord.id });
+    return { dismissed: res.length > 0 };
+  });
+}
+
 /** List the unconfirmed queue (US1) — awaiting human ratification, excluding dismissed. Newest first. */
 export async function listQueue(deps: CoreDeps, workspaceId: string): Promise<QueueItem[]> {
   return deps.db.withTenant(workspaceId, async (tx) => {
@@ -135,6 +184,8 @@ export interface DecisionDetail {
   sourceRef: string | null;
   supersedesId: string | null;
   supersedesTitle: string | null;
+  supersededById: string | null; // the record that superseded THIS one (chain, other direction)
+  supersededByTitle: string | null;
   confirmedBy: string | null;
   confirmedAt: string | null;
   dismissedAt: string | null;
@@ -160,6 +211,12 @@ export async function getDecision(
         .limit(1);
       supersedesTitle = old?.title ?? null;
     }
+    // The record that superseded THIS one, if any (chain, forward direction).
+    const [successor] = await tx
+      .select({ id: schema.decisionRecord.id, title: schema.decisionRecord.title })
+      .from(schema.decisionRecord)
+      .where(eq(schema.decisionRecord.supersedesId, r.id))
+      .limit(1);
     const horizon = Date.now() - horizonDays * 86_400_000;
     return {
       id: r.id,
@@ -173,6 +230,8 @@ export async function getDecision(
       sourceRef: r.sourceRef,
       supersedesId: r.supersedesId,
       supersedesTitle,
+      supersededById: successor?.id ?? null,
+      supersededByTitle: successor?.title ?? null,
       confirmedBy: r.confirmedBy,
       confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
       dismissedAt: r.dismissedAt ? r.dismissedAt.toISOString() : null,

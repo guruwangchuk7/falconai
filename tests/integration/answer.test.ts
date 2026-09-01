@@ -12,7 +12,6 @@ import { startTestDb, type TestDb } from '../support/pg.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const M2 = resolve(HERE, '../../packages/db/drizzle/0002_personal_falcon.sql');
-const M4 = resolve(HERE, '../../packages/db/drizzle/0004_decision_dismissed_at.sql');
 
 const A = '00000000-0000-0000-0000-0000000000aa';
 const UA = '00000000-0000-0000-0000-0000000000a1';
@@ -35,7 +34,6 @@ let deps: CoreDeps;
 beforeAll(async () => {
   tdb = await startTestDb();
   await tdb.admin.unsafe(readFileSync(M2, 'utf8'));
-  await tdb.admin.unsafe(readFileSync(M4, 'utf8')); // answerQuestion now queries decision_record.dismissed_at
   db = createDb(tdb.appUrl);
   deps = { db, llm };
 

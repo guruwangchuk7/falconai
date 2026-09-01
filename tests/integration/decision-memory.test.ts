@@ -10,13 +10,13 @@ import { createDb, type DbHandle } from '@falcon/db';
 import { EMBEDDING_MODEL, EMBEDDING_VERSION, type LlmProviders } from '@falcon/llm';
 import {
   answerQuestion, searchDecisions, createDecision, confirmDecision, listQueue, getDecision,
+  supersedeDecision, dismissDecision, matchUnconfirmedCandidates,
   type CoreDeps,
 } from '@falcon/core';
 import { startTestDb, type TestDb } from '../support/pg.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const M2 = resolve(HERE, '../../packages/db/drizzle/0002_personal_falcon.sql');
-const M4 = resolve(HERE, '../../packages/db/drizzle/0004_decision_dismissed_at.sql');
 
 const A = '00000000-0000-0000-0000-0000000000aa';
 const B = '00000000-0000-0000-0000-0000000000bb';
@@ -36,8 +36,7 @@ let deps: CoreDeps;
 
 beforeAll(async () => {
   tdb = await startTestDb();
-  await tdb.admin.unsafe(readFileSync(M2, 'utf8')); // query_event/answer tables the answer path writes
-  await tdb.admin.unsafe(readFileSync(M4, 'utf8')); // dismissed_at column
+  await tdb.admin.unsafe(readFileSync(M2, 'utf8')); // query_event/answer tables the answer path writes (0004/dismissed_at is applied by startTestDb)
   db = createDb(tdb.appUrl);
   deps = { db, llm };
   await tdb.admin`insert into workspace ${tdb.admin({ id: A, name: 'A', settings: {} }, 'id', 'name', 'settings')}`;
@@ -101,4 +100,48 @@ it('tenant isolation: workspace B cannot see or confirm A\'s decision (SC-005/FR
   const res = await confirmDecision(deps, B, id, UA);
   expect(res.status).toBe('noop');                          // RLS: no row to confirm from B
   expect((await getDecision(deps, A, id))!.status).toBe('unconfirmed'); // unchanged
+});
+
+it('US3: supersede flips the old record out of retrieval and links the chain both ways (R23)', async () => {
+  const { id: oldId } = await createDecision(deps, A, { title: 'DB choice: MongoDB', decision: 'MongoDB' });
+  await confirmDecision(deps, A, oldId, UA);
+  const { id: newId } = await createDecision(deps, A, { title: 'DB choice: Postgres', decision: 'Postgres' });
+  await confirmDecision(deps, A, newId, UA);
+
+  const res = await supersedeDecision(deps, A, { newRecordId: newId, supersedesId: oldId });
+  expect(res.superseded).toBe(true);
+
+  const ids = (await searchDecisions(deps, A, 'database choice', 20)).map((r) => r.id);
+  expect(ids).toContain(newId);       // current decision retrievable
+  expect(ids).not.toContain(oldId);   // reversed decision never surfaces as live
+
+  const oldDetail = (await getDecision(deps, A, oldId))!;
+  expect(oldDetail.status).toBe('superseded');
+  expect(oldDetail.supersededById).toBe(newId);            // chain forward
+  expect((await getDecision(deps, A, newId))!.supersedesId).toBe(oldId); // chain back
+
+  expect((await supersedeDecision(deps, A, { newRecordId: newId, supersedesId: oldId })).superseded).toBe(false); // idempotent
+});
+
+it('US4: dismiss tombstones an unconfirmed candidate; it never grounds or surfaces again (FR-005)', async () => {
+  const { id } = await createDecision(deps, A, { title: 'Maybe adopt Bun', decision: 'Bun?', sourceRef: '#99' });
+  expect((await listQueue(deps, A)).map((q) => q.id)).toContain(id);
+
+  const res = await dismissDecision(deps, A, id);
+  expect(res.dismissed).toBe(true);
+
+  expect((await listQueue(deps, A)).map((q) => q.id)).not.toContain(id);          // gone from the queue
+  expect((await matchUnconfirmedCandidates(deps, A, 'javascript runtime', 10)).map((m) => m.id)).not.toContain(id); // never a status hint
+  const detail = (await getDecision(deps, A, id))!;
+  expect(detail.dismissedAt).toBeTruthy();
+  expect(detail.status).toBe('unconfirmed');                // dismiss is orthogonal to the lifecycle
+
+  expect((await dismissDecision(deps, A, id)).dismissed).toBe(false); // idempotent
+});
+
+it('US4: a confirmed decision cannot be dismissed (lifecycle guard)', async () => {
+  const { id } = await createDecision(deps, A, { title: 'Locked decision', decision: 'final' });
+  await confirmDecision(deps, A, id, UA);
+  expect((await dismissDecision(deps, A, id)).dismissed).toBe(false);
+  expect((await getDecision(deps, A, id))!.dismissedAt).toBeNull();
 });

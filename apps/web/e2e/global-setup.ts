@@ -23,7 +23,6 @@ import { A, ART, UA, BASE_URL, PORT, TEST_AUTH_SECRET } from './support/fixture'
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = resolve(HERE, '..');
 const M2 = resolve(HERE, '../../../packages/db/drizzle/0002_personal_falcon.sql');
-const M4 = resolve(HERE, '../../../packages/db/drizzle/0004_decision_dismissed_at.sql'); // feature 005
 const VEC = `[${Array(1024).fill(0.1).join(',')}]`; // matches fake-llm's constant query embedding
 
 async function waitForServer(url: string, timeoutMs: number): Promise<void> {
@@ -43,8 +42,7 @@ async function waitForServer(url: string, timeoutMs: number): Promise<void> {
 export default async function globalSetup() {
   // 1. Postgres (reuses the integration-test bootstrap: applies 0001 + creates the falcon_app role).
   const tdb = await startTestDb();
-  await tdb.admin.unsafe(readFileSync(M2, 'utf8'));
-  await tdb.admin.unsafe(readFileSync(M4, 'utf8')); // decision_record.dismissed_at (feature 005)
+  await tdb.admin.unsafe(readFileSync(M2, 'utf8')); // 0004/dismissed_at is applied by startTestDb
 
   // Seed one tenant: workspace A, user UA, and one auth-related artifact + embedded chunk UA owns.
   await tdb.admin`insert into workspace ${tdb.admin({ id: A, name: 'A', settings: {} }, 'id', 'name', 'settings')}`;
