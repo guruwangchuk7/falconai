@@ -16,8 +16,10 @@ Decision memory is **the moat**. The PRD is explicit:
 - The Org Decision Index (F2.4) and Decision Records (F10.1) are the artifacts that make it real;
   `decision_records` is the *"compounding asset the moat depends on"* with effectively-indefinite
   retention (PRD §12 retention policy).
-- Goal **G6**: *"Produce a Decision Record, not just a summary."* Success metric: ≥ 1.0 Decision
-  Records per decision-bearing meeting (PRD §11).
+- Goal **G6**: *"Produce a Decision Record, not just a summary."* The PRD's G6 metric — ≥ 1.0
+  Decision Records per decision-bearing *meeting* — is **uncomputable in this sprint**, because
+  meetings are not an indexed source yet (§4). This sprint uses a **local proxy** (decision records
+  confirmed per active engineer-week; §11) and the PRD metric unblocks when meeting ingestion lands.
 
 Real tester feedback (2026-08-31) independently pointed at this same layer: *"ask why did we decide
 X"* was the #1 requested feature. This sprint delivers the near-term slice of that vision **on the
@@ -56,8 +58,10 @@ and the retriever cannot yet distinguish "no decision" from "an unconfirmed cand
 > real, safe input to Falcon's general Q&A — then ship to the warm engineers and measure whether they
 > return to ask.
 
-**Exit signal:** engineers *return* to ask Falcon "why/what" questions (retention) — per the
-near-term plan.
+**Exit signal (falsifiable — set the bar before the pilot runs, while there's no stake in the
+outcome):** **≥ 3 of 5 pilot engineers ask Falcon ≥ 2 decision questions in pilot week 2** (i.e.
+return after week 1, not just a first-touch). Supporting proxy: **≥ 1 decision record confirmed per
+active engineer per week** during the pilot. See §11 for instrumentation and the G6 note.
 
 ---
 
@@ -90,6 +94,13 @@ state, and each state has a hard boundary on what may cross into the answer:
 | **confirmed (settled)** | Grounded, cited answer built from the record | Full record content — it is ratified evidence |
 | **superseded** | The current confirmed record, noted as superseding an earlier one | Current record content; the superseded record stays out of retrieval |
 
+**These states are NOT mutually exclusive.** The most decision-memory-ish situation is *"we decided
+Deepgram (confirmed), but there's an unratified proposal to switch (unconfirmed)."* If the resolver
+picked only one state, it would answer *"we chose Deepgram"* flat — confidently stale, which is worse
+than silence. So `settled` and a **pending change co-occur**: a `settled` answer may carry an optional
+`pendingChange` field (metadata only — existence + `sourceRef` + queue link, same boundary rules as
+`proposed_unconfirmed`). One extra field, not a new branch.
+
 ### 5.1 The invariant this forces
 
 > **Unconfirmed decision content never reaches the model and never becomes a citation.**
@@ -115,12 +126,15 @@ Enforced by two mechanical properties (below), not by prompt instructions.
    `rationale`, or `options`, so unconfirmed content cannot leak into an answer.
 
 4. **New deterministic status resolver** (pure, unit-tested), run in code **outside the LLM**: given
-   the query + the grounding result, produce an optional `decisionStatus` object on `Answer`:
-   - if a confirmed decision grounded a surviving claim → `settled` (record id; note `changed` if it
+   the query + the grounding result, produce an optional `decisionStatus` object on `Answer`. The
+   confirmed and unconfirmed checks are **independent** (per §5, they co-occur):
+   - `settled` when a confirmed decision grounded a surviving claim (record id; note `changed` if it
      `supersedes` a prior record);
-   - else if a strongly-matching unconfirmed candidate exists (distance under a threshold) →
-     `proposed_unconfirmed` with `{ sourceRefs, queueLink, count }` only;
-   - else → omit.
+   - `pendingChange` / `proposed_unconfirmed` when a strongly-matching unconfirmed candidate exists
+     (distance below the match threshold **and** above the small-corpus floor — see §11), carrying
+     `{ sourceRefs, queueLink, count }` only. Attached as `pendingChange` alongside a `settled`
+     answer, or as the standalone `proposed_unconfirmed` state when nothing confirmed grounded;
+   - neither → omit.
    The LLM prompt is unchanged and never receives unconfirmed content, so it **cannot** quote or
    ground on it. The status line is assembled from metadata, not generated. This is source-driven
    (fires whenever a relevant unconfirmed candidate surfaces), **not** question-type routing.
@@ -133,8 +147,19 @@ Enforced by two mechanical properties (below), not by prompt instructions.
   This is the human-in-the-loop write gate that feeds the read path (F10.1 / R23).
 - **Supersede** (`supersedeDecision`) → new confirmed record links to the old via `supersedesId`; old
   flips to `superseded` and drops out of retrieval (reversed decisions never surface as live — R23).
-- **Dismiss** → an unconfirmed candidate the user rejects (soft-delete / status).
-  `PATCH /api/decisions/[id]` covers confirm / supersede / dismiss.
+- **Dismiss** → an unconfirmed candidate the user rejects. `PATCH /api/decisions/[id]` covers confirm
+  / supersede / dismiss.
+
+  **Requires a DB migration.** The Drizzle schema uses `text('status')`, but the actual DDL enforces
+  a CHECK constraint — `0001_init.sql:110`:
+  `status text not null default 'unconfirmed' check (status in ('unconfirmed','confirmed','superseded'))`.
+  Adding `'dismissed'` needs a new migration that alters this constraint (this is the sprint's one
+  schema change; it is invisible from the Drizzle schema alone). Dismiss is a **persistent tombstone**,
+  not a hard delete — because the Ship-2 auto-miner re-scans merged PRs and **would re-suggest a
+  dismissed `sourceRef`** on the next sync. So: `matchUnconfirmedCandidates` filters
+  `status = 'unconfirmed'` explicitly (excludes dismissed), and the miner skips any `sourceRef` that
+  already has a `dismissed` (or confirmed/superseded) record. Grounding is already safe —
+  `searchDecisions` filters `status = 'confirmed'`.
 
 All writes go through `withTenant` (Postgres RLS — PRD §12.9, blocker-class). Only confirmed records
 are ever retrievable (F10.1).
@@ -207,3 +232,34 @@ F2.4 (Org Decision Index) · F10.1 (decision lifecycle unconfirmed→confirmed�
 (one-click confirm) · F7.2 / R4 / R20 (provenance-gated output) · R23 (self-poisoning memory guard) ·
 G6 / §11 (Decision Record per decision meeting) · §12.9 / R25 (RLS tenant isolation) · §12.8 (pinned
 model versions) · §6 / §16 (compounding org decision memory = the moat).
+
+---
+
+## 11. Open questions & instrumentation
+
+**Open questions (resolve during `/speckit-plan`, not left implicit):**
+
+1. **Match threshold for the status resolver (§6.1.4).** What cosine-distance cutoff makes an
+   unconfirmed candidate "relevant enough" to surface? There is no threshold anywhere in retrieval
+   today (`retrieve` / `searchDecisions` just `orderBy(dist).limit(k)`). Too loose → answers grow a
+   spurious "there's an unconfirmed candidate" footer until people learn to ignore it (the feature
+   dies of noise). Proposed method: calibrate on the pilot corpus rather than guessing a constant;
+   start conservative (surface only very close matches) and loosen on evidence. **Make-or-break.**
+2. **Small-corpus retrieval floor.** At N≈10 records, vector top-k is near-arbitrary and will
+   confidently surface an unrelated decision — the first thing a tester hits. This is a latent
+   property of the **already-shipped** `searchDecisions` too, not just the new resolver. Need an
+   absolute distance floor (below which we return nothing) applied before any decision result is
+   shown. Decide the floor + whether to backfill it into `searchDecisions`.
+3. **Dismiss ↔ miner interaction (§6.2).** Confirm the tombstone-by-`sourceRef` suppression is the
+   chosen mechanism (vs. a separate suppression table) before building the miner.
+
+**Instrumentation (day one — the product is downstream of whether people confirm):**
+
+- **Confirmations/week** and **median unconfirmed-queue age** (is the confirm ritual actually
+  happening, or is the queue rotting?).
+- **Decision questions asked / engineer / week** (the retention exit signal, §3).
+- **Status-resolver fire rate** — how often answers carry a `proposed_unconfirmed` / `pendingChange`
+  footer (early-warning for a too-loose threshold, open question 1).
+- **Records confirmed / active engineer-week** — the sprint-local proxy for G6 (§1).
+
+All via the existing `packages/observability` (Langfuse) surface; no new dependency.
