@@ -25,12 +25,14 @@ export async function upsertArtifact(tx: TenantTx, workspaceId: string, userId: 
       title: input.title, body: input.body, repoOrProject: input.repoOrProject,
       aclTags: input.aclTags, trustTier: input.trustTier, sourceUpdatedAt: updatedAt,
       lastSyncedAt: new Date(), isStale: false,
+      state: input.state ?? null, mergedClosedAt: input.mergedClosedAt ? new Date(input.mergedClosedAt) : null,
     })
     .onConflictDoUpdate({
       target: [schema.artifact.workspaceId, schema.artifact.source, schema.artifact.externalRef],
       set: {
         title: input.title, body: input.body, aclTags: input.aclTags, trustTier: input.trustTier,
         sourceUpdatedAt: updatedAt, lastSyncedAt: new Date(), isStale: false,
+        state: input.state ?? null, mergedClosedAt: input.mergedClosedAt ? new Date(input.mergedClosedAt) : null,
       },
     })
     .returning({ id: schema.artifact.id });

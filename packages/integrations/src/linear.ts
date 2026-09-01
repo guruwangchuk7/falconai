@@ -12,6 +12,11 @@ export class LinearAdapter implements SourceAdapter {
     for (const issue of page.nodes) {
       // team prefix (e.g. "ENG" from "ENG-217") is a cheap per-project ACL tag.
       const project = issue.identifier.split('-')[0] ?? null;
+      const ws = await issue.state; // WorkflowState
+      const stateType = ws?.type ?? null; // triage|backlog|unstarted|started|completed|canceled
+      const mergedClosedAt = (stateType === 'completed' || stateType === 'canceled')
+        ? (issue.completedAt?.toISOString() ?? issue.updatedAt.toISOString())
+        : null;
       yield {
         source: 'linear',
         externalRef: issue.identifier,
@@ -23,6 +28,8 @@ export class LinearAdapter implements SourceAdapter {
         trustTier: 'trusted', // team-authored work item
         sourceUpdatedAt: issue.updatedAt.toISOString(),
         ownerExternalId: null, // deep creator/assignee resolution deferred (avoids N+1 in Phase 1)
+        state: stateType,
+        mergedClosedAt,
       };
     }
   }
