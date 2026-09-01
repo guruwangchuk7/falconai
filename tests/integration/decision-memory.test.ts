@@ -145,3 +145,10 @@ it('US4: a confirmed decision cannot be dismissed (lifecycle guard)', async () =
   expect((await dismissDecision(deps, A, id)).dismissed).toBe(false);
   expect((await getDecision(deps, A, id))!.dismissedAt).toBeNull();
 });
+
+it('review #3: a title-only record cannot be confirmed (no empty decision becomes evidence)', async () => {
+  const { id } = await createDecision(deps, A, { title: 'We should pick a database' }); // no decision text
+  expect((await confirmDecision(deps, A, id, UA)).status).toBe('missing_decision');
+  expect((await getDecision(deps, A, id))!.status).toBe('unconfirmed');               // stays out of the index
+  expect((await searchDecisions(deps, A, 'database', 20)).map((r) => r.id)).not.toContain(id);
+});

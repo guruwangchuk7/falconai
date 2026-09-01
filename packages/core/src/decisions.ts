@@ -82,22 +82,30 @@ export async function createDecision(
 
 /**
  * Confirm a decision (F10.1/F10.4, US1) — the human-in-the-loop write gate that feeds the read path.
- * unconfirmed → confirmed, stamping the confirmer + time. Idempotent: already-confirmed or superseded
- * records are a no-op (state never regresses). Only after this does the record become retrievable.
+ * unconfirmed → confirmed, stamping the confirmer + time. A record MUST have non-empty `decision` text
+ * to be confirmed (review finding #3): confirming turns it into retrievable evidence, so a title-only
+ * record would ground answers on nothing — returns `missing_decision` instead. Idempotent: already-
+ * confirmed/superseded/dismissed records are a no-op (state never regresses).
  */
 export async function confirmDecision(
   deps: CoreDeps,
   workspaceId: string,
   id: string,
   confirmedBy: string,
-): Promise<{ status: 'confirmed' | 'noop' }> {
+): Promise<{ status: 'confirmed' | 'noop' | 'missing_decision' }> {
   return deps.db.withTenant(workspaceId, async (tx) => {
-    const res = await tx
+    const [row] = await tx
+      .select({ status: schema.decisionRecord.status, decision: schema.decisionRecord.decision, dismissedAt: schema.decisionRecord.dismissedAt })
+      .from(schema.decisionRecord)
+      .where(eq(schema.decisionRecord.id, id))
+      .limit(1);
+    if (!row || row.status !== 'unconfirmed' || row.dismissedAt) return { status: 'noop' };
+    if (!row.decision || row.decision.trim() === '') return { status: 'missing_decision' };
+    await tx
       .update(schema.decisionRecord)
       .set({ status: 'confirmed', confirmedBy, confirmedAt: new Date() })
-      .where(and(eq(schema.decisionRecord.id, id), eq(schema.decisionRecord.status, 'unconfirmed'), isNull(schema.decisionRecord.dismissedAt)))
-      .returning({ id: schema.decisionRecord.id });
-    return { status: res.length > 0 ? 'confirmed' : 'noop' };
+      .where(and(eq(schema.decisionRecord.id, id), eq(schema.decisionRecord.status, 'unconfirmed')));
+    return { status: 'confirmed' };
   });
 }
 

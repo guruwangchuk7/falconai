@@ -18,7 +18,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   switch (body?.action) {
     case 'confirm': {
       // 'noop' = nothing was unconfirmed to confirm (already confirmed/superseded, or not found).
-      return NextResponse.json(await confirmDecision(deps(), s.workspaceId, id, s.userId));
+      const res = await confirmDecision(deps(), s.workspaceId, id, s.userId);
+      if (res.status === 'missing_decision') {
+        return NextResponse.json({ error: 'Add decision text before confirming.', ...res }, { status: 400 });
+      }
+      return NextResponse.json(res);
     }
     case 'supersede': {
       if (typeof body.supersedesId !== 'string') {
