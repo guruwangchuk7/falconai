@@ -18,6 +18,19 @@ export function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').trim().replace(/[.!?,;:\s]+$/g, '');
 }
 
+const MINE_STATES = new Set(['merged', 'completed']); // Ship-2 v1; closed/canceled deferred
+
+/** Reactive enqueue gate (Ship 2): only freshly merged PRs / completed issues, strictly after the
+ *  connection's mine watermark, are worth mining. Pure so `handleSync` and its tests share one
+ *  source of truth for "should we enqueue a mine job for this artifact". */
+export function shouldMine(a: { type: string; state: string | null; mergedClosedAt: Date | null }, watermark: Date | null): boolean {
+  if (a.type !== 'pr' && a.type !== 'issue') return false;
+  if (!a.state || !MINE_STATES.has(a.state)) return false;
+  if (!a.mergedClosedAt) return false;
+  if (watermark && a.mergedClosedAt <= watermark) return false; // backfill guard
+  return true;
+}
+
 export type MineResult = 'suggested' | 'no_decision' | 'error' | 'deferred';
 export interface MinedRow { extractorVersion: string; contentHash: string; result: MineResult }
 

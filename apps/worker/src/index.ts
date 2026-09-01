@@ -2,10 +2,10 @@ import { Worker } from 'bullmq';
 import { getDb } from '@falcon/db';
 import { createLlmProviders } from '@falcon/llm';
 import { createSecretStore } from '@falcon/secrets';
-import type { CoreDeps } from '@falcon/core';
-import { conn, defaultJobOpts, maintenanceQueue, type DigestJob, type IndexJob, type SyncJob } from '@falcon/queue';
+import { EXTRACTOR_VERSION, type CoreDeps } from '@falcon/core';
+import { conn, defaultJobOpts, maintenanceQueue, mineQueue, mineJobId, type DigestJob, type IndexJob, type MineJob, type SyncJob } from '@falcon/queue';
 import { captureException, flushObservability, initObservability } from '@falcon/observability';
-import { handleDigest, handleIndex, handleSync, pollAll, pollDigests } from './handlers.js';
+import { handleDigest, handleIndex, handleMine, handleSync, pollAll, pollDigests } from './handlers.js';
 
 await initObservability();
 
@@ -17,11 +17,30 @@ const connection = conn();
 // causes 429 bursts — the provider now retries with backoff, but low-throughput deployments can
 // also cap concurrency via INDEX_CONCURRENCY (default 8) to reduce wasted retries.
 const indexConcurrency = Number(process.env.INDEX_CONCURRENCY) || 8;
+const mineConcurrency = Number(process.env.MINE_CONCURRENCY) || 2;
 
 const workers = [
   new Worker<SyncJob>('sync', (job) => handleSync(deps, secrets, job.data), { connection, concurrency: 4 }),
   new Worker<IndexJob>('index', (job) => handleIndex(deps, job.data), { connection, concurrency: indexConcurrency }),
   new Worker<DigestJob>('digest', (job) => handleDigest(deps, job.data), { connection, concurrency: 4 }),
+  new Worker<MineJob>('mine', async (job) => {
+    const out = await handleMine(deps, job.data);
+    if (out.result === 'deferred') {
+      // Budget-defer re-enqueue: push past the next UTC midnight (when the daily suggestion
+      // budget resets), jittered so a burst of deferred jobs doesn't all fire at once, at a
+      // higher priority than fresh jobs, and deduped per-day (we don't have the artifact body
+      // here to recompute the content hash, so the jobId buckets on the day instead).
+      const now = new Date();
+      const nextMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+      const jitterMs = Math.floor(Math.random() * 15 * 60_000); // spread the 00:00 herd over 15 min
+      const delay = (nextMidnight - now.getTime()) + jitterMs;
+      const day = new Date(nextMidnight).toISOString().slice(0, 10);
+      await mineQueue().add('mine', job.data, {
+        ...defaultJobOpts, delay, priority: 1,
+        jobId: mineJobId(job.data.workspaceId, job.data.artifactId, EXTRACTOR_VERSION, 'defer', day),
+      });
+    }
+  }, { connection, concurrency: mineConcurrency }),
   new Worker('maintenance', async (job) => {
     if (job.name === 'poll-sync') await pollAll(deps);
     else if (job.name === 'poll-digests') await pollDigests(deps);
@@ -39,7 +58,7 @@ for (const w of workers) {
 await maintenanceQueue().add('poll-sync', {}, { repeat: { pattern: '*/10 * * * *' }, ...defaultJobOpts });
 await maintenanceQueue().add('poll-digests', {}, { repeat: { pattern: '0 3 * * *' }, ...defaultJobOpts });
 
-console.log('falcon worker started: sync, index, digest, maintenance');
+console.log('falcon worker started: sync, index, digest, mine, maintenance');
 
 async function shutdown() {
   await Promise.all(workers.map((w) => w.close()));

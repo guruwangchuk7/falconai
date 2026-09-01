@@ -37,8 +37,17 @@ let _sync: Queue<SyncJob> | undefined;
 let _index: Queue<IndexJob> | undefined;
 let _digest: Queue<DigestJob> | undefined;
 let _maint: Queue | undefined;
+let _mine: Queue<MineJob> | undefined;
 
 export const syncQueue = (): Queue<SyncJob> => (_sync ??= new Queue<SyncJob>('sync', { connection: conn() }));
 export const indexQueue = (): Queue<IndexJob> => (_index ??= new Queue<IndexJob>('index', { connection: conn() }));
 export const digestQueue = (): Queue<DigestJob> => (_digest ??= new Queue<DigestJob>('digest', { connection: conn() }));
 export const maintenanceQueue = (): Queue => (_maint ??= new Queue('maintenance', { connection: conn() }));
+export const mineQueue = (): Queue<MineJob> => (_mine ??= new Queue<MineJob>('mine', { connection: conn() }));
+
+/** Stable, content-addressed mine job id: dedups an artifact's mine job at a given extractor
+ *  version + content hash. `dayBucket` is used by the budget-defer re-enqueue (Task 8) to dedup
+ *  per-UTC-day instead of per-content-hash (the re-enqueue doesn't have the artifact body handy). */
+export function mineJobId(workspaceId: string, artifactId: string, version: string, contentHash8: string, dayBucket?: string): string {
+  return `mine:${workspaceId}:${artifactId}:${version}:${contentHash8}${dayBucket ? `:d${dayBucket}` : ''}`;
+}

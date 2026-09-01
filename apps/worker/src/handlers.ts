@@ -3,12 +3,12 @@ import { schema } from '@falcon/db';
 import {
   generateDigest, indexArtifact, upsertArtifact, type CoreDeps,
   extractDecisions, contentHash, normalizeTitle, getMinedRow, recordMined, isSuppressed,
-  countSuggestionsToday, createDecision, EXTRACTOR_VERSION, type MineResult,
+  countSuggestionsToday, createDecision, EXTRACTOR_VERSION, shouldMine, type MineResult,
 } from '@falcon/core';
 import type { SecretStore } from '@falcon/secrets';
 import type { ArtifactInput } from '@falcon/integrations';
 import { buildAdapter, type ConnectionRow } from './adapters.js';
-import { digestQueue, indexQueue, syncQueue, defaultJobOpts, type DigestJob, type IndexJob, type SyncJob } from '@falcon/queue';
+import { digestQueue, indexQueue, mineQueue, mineJobId, syncQueue, defaultJobOpts, type DigestJob, type IndexJob, type SyncJob } from '@falcon/queue';
 import { DECISION_MINE_MIN_CONFIDENCE, DECISION_MINE_DAILY_BUDGET } from '@falcon/config';
 
 async function memberLoginMap(deps: CoreDeps, workspaceId: string): Promise<Map<string, string>> {
@@ -50,6 +50,14 @@ export async function handleSync(deps: CoreDeps, secrets: SecretStore, payload: 
       const userId = (it.ownerExternalId && members.get(it.ownerExternalId)) || conn.userId;
       const artifactId = await deps.db.withTenant(workspaceId, (tx) => upsertArtifact(tx, workspaceId, userId, it));
       await indexQueue().add('index', { workspaceId, artifactId }, defaultJobOpts);
+
+      // Ship 2: enqueue a mine job for freshly merged PRs / completed issues (after the watermark).
+      const mcAt = it.mergedClosedAt ? new Date(it.mergedClosedAt) : null;
+      if (shouldMine({ type: it.type, state: it.state ?? null, mergedClosedAt: mcAt }, conn.mineWatermark ?? null)) {
+        const segs = [{ speaker: null, text: [it.title, it.body].filter(Boolean).join('\n\n') }];
+        const jobId = mineJobId(workspaceId, artifactId, EXTRACTOR_VERSION, contentHash(segs));
+        await mineQueue().add('mine', { workspaceId, artifactId }, { ...defaultJobOpts, jobId });
+      }
       count++;
     }
 
