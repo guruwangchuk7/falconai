@@ -56,13 +56,32 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           .where(inArray(schema.answerCitation.answerId, answerIds))
       : [];
 
+    // Decision citations live in decision_record, not artifact — the artifact join above drops them.
+    // Look them up separately so a past "why did we decide X" answer keeps its clickable decision
+    // citation in history, matching the live answer (feature 005 US1, review finding #2).
+    const decisionCites = answerIds.length
+      ? await tx
+          .select({
+            answerId: schema.answerCitation.answerId,
+            decisionId: schema.decisionRecord.id,
+            title: schema.decisionRecord.title,
+          })
+          .from(schema.answerCitation)
+          .innerJoin(schema.decisionRecord, eq(schema.decisionRecord.id, schema.answerCitation.artifactId))
+          .where(inArray(schema.answerCitation.answerId, answerIds))
+      : [];
+
     const byAnswer = new Map<string, Array<{ externalRef: string; title: string | null; type: string; url: string | null }>>();
+    const push = (answerId: string, cit: { externalRef: string; title: string | null; type: string; url: string | null }) => {
+      const list = byAnswer.get(answerId) ?? [];
+      if (!list.some((x) => x.externalRef === cit.externalRef && x.type === cit.type)) list.push(cit);
+      byAnswer.set(answerId, list);
+    };
     for (const c of cites) {
-      const list = byAnswer.get(c.answerId) ?? [];
-      if (!list.some((x) => x.externalRef === c.externalRef && x.type === c.type)) {
-        list.push({ externalRef: c.externalRef, title: c.title, type: c.type, url: citationUrl(c) });
-      }
-      byAnswer.set(c.answerId, list);
+      push(c.answerId, { externalRef: c.externalRef, title: c.title, type: c.type, url: citationUrl(c) });
+    }
+    for (const c of decisionCites) {
+      push(c.answerId, { externalRef: c.title ?? 'decision', title: c.title, type: 'decision', url: `/decisions/${c.decisionId}` });
     }
 
     return {

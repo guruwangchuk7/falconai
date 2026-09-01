@@ -7,6 +7,11 @@ export { voyageEmbed } from './voyage.js';
 export { DOCS, QUERIES, type EvalDoc, type EvalQuery } from './fixture.js';
 export { ANSWER_GOLDEN, ANSWER_EVAL_BAR, type AnswerCase } from './answer-fixture.js';
 export { runAnswerEval, type AnswerEvalResult } from './answer-eval.js';
+export {
+  runDecisionCeiling, cosineDistance,
+  CEILING_DECISIONS, CEILING_DISTRACTORS, CEILING_QUERIES,
+  type CeilingRow, type CeilingReport,
+} from './decision-ceiling.js';
 
 /** Embedding models to compare (research D6: settle voyage-code-4 vs voyage-4-large). */
 export const BAKEOFF_MODELS = ['voyage-code-4', 'voyage-4-large'] as const;

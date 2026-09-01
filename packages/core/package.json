@@ -6,6 +6,7 @@
   "exports": { ".": "./src/index.ts" },
   "scripts": { "typecheck": "tsc --noEmit" },
   "dependencies": {
+    "@falcon/config": "workspace:*",
     "@falcon/db": "workspace:*",
     "@falcon/integrations": "workspace:*",
     "@falcon/llm": "workspace:*",

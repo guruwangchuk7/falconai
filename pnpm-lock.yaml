@@ -244,6 +244,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@falcon/config':
+        specifier: workspace:*
+        version: link:../config
       '@falcon/db':
         specifier: workspace:*
         version: link:../db

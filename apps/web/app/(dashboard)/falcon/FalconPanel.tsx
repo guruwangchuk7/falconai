@@ -3,13 +3,39 @@ import { useState } from 'react';
 
 interface Citation { artifactId?: string; externalRef: string; title: string | null; type: string; url: string | null }
 interface Claim { text: string; citations: Citation[] }
+interface PendingRef { count: number; sourceRefs: (string | null)[]; queueLink: string }
+interface DecisionStatus {
+  settled?: { decisionId: string; changed: boolean };
+  pendingChange?: PendingRef;
+  proposed?: PendingRef;
+}
 interface AskResponse {
   answerId?: string;
   status: 'grounded' | 'no_grounded_answer';
   claims: Claim[];
   dataAsOf: string | null;
+  decisionStatus?: DecisionStatus;
   message?: string;
   conversationId?: string;
+}
+
+/** The four-state decision boundary (US2). Surfaces an UNCONFIRMED candidate as a neutral status line
+ *  — existence + source pointer + a link to the queue — and NEVER its content. */
+function DecisionStatusNote({ status }: { status: DecisionStatus }) {
+  const pending = status.proposed ?? status.pendingChange;
+  if (!pending) return null;
+  const refs = pending.sourceRefs.filter((r): r is string => !!r);
+  const from = refs.length ? ` (from ${refs.join(', ')})` : '';
+  const lead = status.proposed
+    ? "This isn't settled yet — there's an unconfirmed decision candidate"
+    : 'Heads up: an unratified change to this decision has been proposed';
+  const plural = pending.count > 1 ? `${pending.count} candidates` : 'a candidate';
+  return (
+    <p className="mt-3 rounded border border-hairline bg-hairline/20 p-2.5 text-sm text-body">
+      {lead}{pending.count > 1 ? ` — ${plural}` : ''}{from}.{' '}
+      <a href={pending.queueLink} className="underline decoration-dotted hover:text-ink">Open the decision queue</a>
+    </p>
+  );
 }
 
 interface ConvSummary { id: string; title: string | null; updatedAt: string }
@@ -203,6 +229,8 @@ export function FalconPanel() {
           {editState === 'saved' && <p className="text-xs text-muted">Saved — your version is now what Falcon uses.</p>}
         </div>
       )}
+
+      {answer?.decisionStatus && <DecisionStatusNote status={answer.decisionStatus} />}
     </div>
   );
 }

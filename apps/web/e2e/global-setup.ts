@@ -42,7 +42,7 @@ async function waitForServer(url: string, timeoutMs: number): Promise<void> {
 export default async function globalSetup() {
   // 1. Postgres (reuses the integration-test bootstrap: applies 0001 + creates the falcon_app role).
   const tdb = await startTestDb();
-  await tdb.admin.unsafe(readFileSync(M2, 'utf8'));
+  await tdb.admin.unsafe(readFileSync(M2, 'utf8')); // 0004/dismissed_at is applied by startTestDb
 
   // Seed one tenant: workspace A, user UA, and one auth-related artifact + embedded chunk UA owns.
   await tdb.admin`insert into workspace ${tdb.admin({ id: A, name: 'A', settings: {} }, 'id', 'name', 'settings')}`;
