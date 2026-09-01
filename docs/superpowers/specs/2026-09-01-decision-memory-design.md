@@ -142,6 +142,14 @@ Enforced by two mechanical properties (below), not by prompt instructions.
    The LLM prompt is unchanged and never receives unconfirmed content, so it **cannot** quote or
    ground on it. The status line is assembled from metadata, not generated. This is source-driven
    (fires whenever a relevant unconfirmed candidate surfaces), **not** question-type routing.
+   *Implementation:* the resolver detects a grounded decision via `citation.type === 'decision'` on a
+   surviving claim (that's how `answerQuestion` already tags decision candidates) — no new plumbing.
+
+5. **Embed the query once (Voyage rate limit).** Today `retrieve()` and `searchDecisions()` each embed
+   the query independently; adding `matchUnconfirmedCandidates()` would make **3 Voyage embed calls for
+   the same query string per question**. At Voyage's low RPM (see run gotchas) that throttles the
+   pilot. Compute the query vector once in `answerQuestion` and thread it through all three (add an
+   optional precomputed-vector param to `retrieve` / `searchDecisions` / `matchUnconfirmedCandidates`).
 
 ### 6.2 Write path — lifecycle (`packages/core`, new API routes)
 
@@ -154,15 +162,19 @@ Enforced by two mechanical properties (below), not by prompt instructions.
 - **Dismiss** → an unconfirmed candidate the user rejects. `PATCH /api/decisions/[id]` covers confirm
   / supersede / dismiss.
 
-  **Requires a DB migration.** The Drizzle schema uses `text('status')`, but the actual DDL enforces
-  a CHECK constraint — `0001_init.sql:110`:
-  `status text not null default 'unconfirmed' check (status in ('unconfirmed','confirmed','superseded'))`.
-  Adding `'dismissed'` needs a new migration that alters this constraint (this is the sprint's one
-  schema change; it is invisible from the Drizzle schema alone). Dismiss is a **persistent tombstone**,
-  not a hard delete — because the Ship-2 auto-miner re-scans merged PRs and **would re-suggest a
-  dismissed `sourceRef`** on the next sync. So: `matchUnconfirmedCandidates` filters
-  `status = 'unconfirmed'` explicitly (excludes dismissed), and the miner skips any `sourceRef` that
-  already has a `dismissed` (or confirmed/superseded) record. Grounding is already safe —
+  **Requires a DB migration — via an `ADD COLUMN`, not a status enum change.** `decision_record` is
+  **hash-partitioned (16 partitions)** and its `status` CHECK constraint is enforced in the raw DDL
+  (`0001_init.sql:110`, invisible from the Drizzle `text('status')` column). Rather than do
+  constraint-surgery on the partitioned parent to add a 4th `status` value, dismiss is modeled as a
+  **nullable `dismissed_at timestamptz` column** (`ALTER TABLE … ADD COLUMN` cascades cleanly to
+  partitions, gives an audit timestamp, and keeps "dismissed" *orthogonal* to the
+  unconfirmed/confirmed/superseded lifecycle instead of overloading it). This is the sprint's one
+  schema change.
+
+  Dismiss is a **persistent tombstone**, not a hard delete — the Ship-2 auto-miner re-scans merged
+  PRs and **would re-suggest a dismissed `sourceRef`** on the next sync. So: `matchUnconfirmedCandidates`
+  filters `status = 'unconfirmed' AND dismissed_at IS NULL`, and the miner skips any `sourceRef` that
+  already has a record (dismissed, confirmed, or superseded). Grounding is already safe —
   `searchDecisions` filters `status = 'confirmed'`.
 
 All writes go through `withTenant` (Postgres RLS — PRD §12.9, blocker-class). Only confirmed records
@@ -259,8 +271,9 @@ model versions) · §6 / §16 (compounding org decision memory = the moat).
    Proposed method: calibrate the ceiling on the pilot corpus rather than guessing a constant; start
    conservative (surface only very close matches) and loosen on evidence. Decide whether to backfill
    the same ceiling into `searchDecisions`. **Make-or-break.**
-2. **Dismiss ↔ miner interaction (§6.2).** Confirm the tombstone-by-`sourceRef` suppression is the
-   chosen mechanism (vs. a separate suppression table) before building the miner.
+2. **Dismiss ↔ miner interaction (§6.2) — resolved to `dismissed_at` + `sourceRef` suppression.**
+   Left here only to confirm during `/speckit-plan` that no case needs a separate suppression table
+   (e.g. suppressing a `sourceRef` that never produced a record). Default: no.
 3. **"Decision question" definition (metrics).** The retention signal counts "decision questions,"
    but we deliberately do **not** classify questions by type (§4). Operational definition to lock:
    a *decision question* = **a question whose answer cited ≥ 1 decision record OR carried a
