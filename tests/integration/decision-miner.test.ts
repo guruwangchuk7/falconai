@@ -9,8 +9,10 @@ import {
   isSuppressed,
   countSuggestionsToday,
   normalizeTitle,
+  EXTRACTOR_VERSION,
   type CoreDeps,
 } from '@falcon/core';
+import { handleMine } from '../../apps/worker/src/handlers.js';
 import { startTestDb, type TestDb } from '../support/pg.js';
 
 const A = '00000000-0000-0000-0000-0000000000aa';
@@ -20,11 +22,24 @@ let tdb: TestDb;
 let db: DbHandle;
 let deps: CoreDeps;
 
+// Mutable canned chat response for the decision-miner tests below (like `cannedAnswer` in
+// decision-memory.test.ts). Tasks 4/5 tests in this file use embeddings, not chat, so this
+// default (empty candidates) never affects them.
+let cannedChat = '{"candidates":[]}';
+
 const llm: LlmProviders = {
-  chat: { model: 'test-model', complete: async () => ({ text: '{"claims":[]}', usage: { inputTokens: 0, outputTokens: 0 } }) },
+  chat: { model: 'test-model', complete: async () => ({ text: cannedChat, usage: { inputTokens: 0, outputTokens: 0 } }) },
   embeddings: { model: EMBEDDING_MODEL, version: EMBEDDING_VERSION, dim: 1024, embed: async (texts: string[]) => texts.map(() => Array(1024).fill(0.1)) },
   rerank: { model: 'r', rerank: async () => [] },
 } as unknown as LlmProviders;
+
+// Seed an artifact row via admin (bypasses RLS) so handleMine can load it.
+async function seedArtifact(id: string, title: string, body: string) {
+  await tdb.admin`insert into artifact ${tdb.admin({
+    id, workspace_id: A, user_id: UA, source: 'github', external_ref: '#' + id.slice(-2),
+    type: 'pr', title, body, acl_tags: [], trust_tier: 'trusted', state: 'merged', merged_closed_at: new Date(),
+  })}`;
+}
 
 beforeAll(async () => {
   tdb = await startTestDb();
@@ -75,4 +90,45 @@ it('countSuggestionsToday counts only today\'s origin=suggested rows', async () 
   const before = await countSuggestionsToday(deps, A);
   await createDecision(deps, A, { title: 'Budget probe', decision: 'z', origin: 'suggested', sourceRef: '#88' });
   expect(await countSuggestionsToday(deps, A)).toBe(before + 1);
+});
+
+it('mines a clear decision into an unconfirmed suggested record + suggested ledger row', async () => {
+  cannedChat = '{"candidates":[{"title":"Adopt Postgres","decision":"Use Postgres over Mongo","rationale":"ops","score":0.92}]}';
+  const art = '00000000-0000-0000-0000-0000000000c1';
+  await seedArtifact(art, 'Switch DB to Postgres', 'We chose Postgres.');
+  const out = await handleMine(deps, { workspaceId: A, artifactId: art });
+  expect(out.result).toBe('suggested');
+  const rec = await tdb.admin`select origin, status, source_ref from decision_record where id = ${out.decisionIds[0]}`;
+  expect(rec[0]).toMatchObject({ origin: 'suggested', status: 'unconfirmed' });
+  const led = await tdb.admin`select result, extractor_version from mined_artifact where artifact_id = ${art}`;
+  expect(led[0]).toMatchObject({ result: 'suggested', extractor_version: EXTRACTOR_VERSION });
+});
+
+it('provenance gate: ignores a sourceRef the model emits, uses the artifact ref', async () => {
+  cannedChat = '{"candidates":[{"title":"Rogue","decision":"x","sourceRef":"#HACK","score":0.9}]}';
+  const art = '00000000-0000-0000-0000-0000000000c2';
+  await seedArtifact(art, 'Some PR', 'body');
+  const out = await handleMine(deps, { workspaceId: A, artifactId: art });
+  const rec = await tdb.admin`select source_ref from decision_record where id = ${out.decisionIds[0]}`;
+  expect(rec[0]!.source_ref).not.toBe('#HACK'); // uses artifact external_ref, never model output
+});
+
+it('re-mining the same artifact+version+hash is a skip (no dup)', async () => {
+  cannedChat = '{"candidates":[{"title":"Adopt Redis","decision":"Use Redis","score":0.9}]}';
+  const art = '00000000-0000-0000-0000-0000000000c3';
+  await seedArtifact(art, 'Add Redis', 'We chose Redis.');
+  const first = await handleMine(deps, { workspaceId: A, artifactId: art });
+  const second = await handleMine(deps, { workspaceId: A, artifactId: art });
+  expect(first.result).toBe('suggested');
+  expect(second.decisionIds).toEqual([]); // skipped by ledger
+});
+
+it('below-threshold candidate → no_decision with max score recorded', async () => {
+  cannedChat = '{"candidates":[{"title":"Maybe","decision":"weak","score":0.4}]}';
+  const art = '00000000-0000-0000-0000-0000000000c4';
+  await seedArtifact(art, 'Weak', 'body');
+  const out = await handleMine(deps, { workspaceId: A, artifactId: art });
+  expect(out.result).toBe('no_decision');
+  const led = await tdb.admin`select max_candidate_score from mined_artifact where artifact_id = ${art}`;
+  expect(Number(led[0]!.max_candidate_score)).toBeCloseTo(0.4);
 });

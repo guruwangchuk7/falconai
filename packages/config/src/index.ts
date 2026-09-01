@@ -82,3 +82,11 @@ export const ROLLING_WINDOW_DAYS = 30;
  * preferred-present. Do not loosen without calibration evidence.
  */
 export const DECISION_RELEVANCE_MAX_DISTANCE = 0.45;
+
+/**
+ * Ship 2 (decision miner, spec §7) — PROVISIONAL until shadow-calibration. Conservative defaults:
+ * a high suggest-time confidence cutoff and a small daily suggestion budget so the miner errs
+ * toward silence rather than noise while its precision is unproven on real corpora.
+ */
+export const DECISION_MINE_MIN_CONFIDENCE = 0.75; // suggest-time cutoff on ScoredCandidate.score
+export const DECISION_MINE_DAILY_BUDGET = 10;     // max suggestions/workspace/day (flood guard)

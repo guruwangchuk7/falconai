@@ -9,6 +9,7 @@ import type { ArtifactInput } from '@falcon/integrations';
 export interface SyncJob { workspaceId: string; connectionId: string; delta?: ArtifactInput[] }
 export interface IndexJob { workspaceId: string; artifactId: string }
 export interface DigestJob { workspaceId: string; userId: string }
+export interface MineJob { workspaceId: string; artifactId: string }
 
 export const defaultJobOpts = {
   attempts: 5,

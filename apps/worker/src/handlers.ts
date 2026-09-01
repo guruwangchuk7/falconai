@@ -1,10 +1,15 @@
 import { eq } from 'drizzle-orm';
 import { schema } from '@falcon/db';
-import { generateDigest, indexArtifact, upsertArtifact, type CoreDeps } from '@falcon/core';
+import {
+  generateDigest, indexArtifact, upsertArtifact, type CoreDeps,
+  extractDecisions, contentHash, normalizeTitle, getMinedRow, recordMined, isSuppressed,
+  countSuggestionsToday, createDecision, EXTRACTOR_VERSION, type MineResult,
+} from '@falcon/core';
 import type { SecretStore } from '@falcon/secrets';
 import type { ArtifactInput } from '@falcon/integrations';
 import { buildAdapter, type ConnectionRow } from './adapters.js';
 import { digestQueue, indexQueue, syncQueue, defaultJobOpts, type DigestJob, type IndexJob, type SyncJob } from '@falcon/queue';
+import { DECISION_MINE_MIN_CONFIDENCE, DECISION_MINE_DAILY_BUDGET } from '@falcon/config';
 
 async function memberLoginMap(deps: CoreDeps, workspaceId: string): Promise<Map<string, string>> {
   const rows = await deps.db.rootDb
@@ -70,6 +75,64 @@ export async function handleIndex(deps: CoreDeps, payload: IndexJob): Promise<vo
 
 export async function handleDigest(deps: CoreDeps, payload: DigestJob): Promise<void> {
   await generateDigest(deps, payload.workspaceId, payload.userId);
+}
+
+export interface MineOutcome { result: MineResult; decisionIds: string[] }
+
+/**
+ * Ship 2 decision miner orchestration: mine-once ledger gate, daily budget gate, LLM extraction
+ * (error-safe), confidence threshold + suppression, and creation of `origin='suggested'` decision
+ * records. PROVENANCE GATE (security): the created record's `sourceRef` is always the triggering
+ * artifact's `externalRef` — NEVER any `sourceRef` the model may have emitted in its JSON output.
+ */
+export async function handleMine(deps: CoreDeps, payload: { workspaceId: string; artifactId: string }): Promise<MineOutcome> {
+  const { workspaceId, artifactId } = payload;
+  const art = await deps.db.withTenant(workspaceId, async (tx) =>
+    (await tx.select().from(schema.artifact).where(eq(schema.artifact.id, artifactId)).limit(1))[0]);
+  if (!art) return { result: 'no_decision', decisionIds: [] }; // artifact gone
+
+  const segments = [{ speaker: null, text: [art.title, art.body].filter(Boolean).join('\n\n') }];
+  const hash = contentHash(segments);
+
+  // Ledger gate: skip iff a row exists at the current version AND hash (any result).
+  const prior = await getMinedRow(deps, workspaceId, artifactId);
+  if (prior && prior.extractorVersion === EXTRACTOR_VERSION && prior.contentHash === hash) {
+    return { result: prior.result, decisionIds: [] };
+  }
+
+  // Budget gate: over budget → defer (write NOTHING; Task 8 re-enqueues with delay).
+  if (await countSuggestionsToday(deps, workspaceId) >= DECISION_MINE_DAILY_BUDGET) {
+    return { result: 'deferred', decisionIds: [] };
+  }
+
+  let candidates;
+  try {
+    candidates = await extractDecisions(deps, { segments, sourceRef: art.externalRef, ownerHint: art.userId });
+  } catch {
+    await recordMined(deps, workspaceId, artifactId, { result: 'error', extractorVersion: EXTRACTOR_VERSION, contentHash: hash });
+    return { result: 'error', decisionIds: [] };
+  }
+
+  const maxScore = candidates.reduce((m, c) => Math.max(m, c.score), 0);
+  const decisionIds: string[] = [];
+  for (const c of candidates) {
+    if (c.score < DECISION_MINE_MIN_CONFIDENCE) continue;
+    if (await isSuppressed(deps, workspaceId, art.externalRef, normalizeTitle(c.title))) continue;
+    const { id } = await createDecision(deps, workspaceId, {
+      title: c.title, decision: c.decision,
+      ...(c.rationale !== undefined && { rationale: c.rationale }),
+      ...(c.options !== undefined && { options: c.options }),
+      ...(c.dissent !== undefined && { dissent: c.dissent }),
+      ownerUserId: art.userId, sourceRef: art.externalRef, origin: 'suggested', // provenance: artifact ref, NEVER model output
+    });
+    decisionIds.push(id);
+  }
+  const result: MineResult = decisionIds.length ? 'suggested' : 'no_decision';
+  await recordMined(deps, workspaceId, artifactId, {
+    result, extractorVersion: EXTRACTOR_VERSION, contentHash: hash,
+    decisionId: decisionIds[0] ?? null, maxCandidateScore: maxScore || null,
+  });
+  return { result, decisionIds };
 }
 
 /** Poll scheduler: iterate workspaces (not RLS'd) and enqueue a sync per active connection. */
