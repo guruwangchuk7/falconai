@@ -1,7 +1,8 @@
 import type { ChatMessage } from '@falcon/llm';
 import type { CoreDeps } from './deps.js';
 import { retrieve, type RetrievedItem } from './retrieve.js';
-import { searchDecisions } from './decisions.js';
+import { searchDecisions, matchUnconfirmedCandidates } from './decisions.js';
+import { resolveDecisionStatus, type DecisionStatus, type UnconfirmedMatch } from './decision-status.js';
 
 /**
  * Personal Falcon — grounded Q&A (Phase 2, spec 002-personal-falcon).
@@ -48,6 +49,10 @@ export interface Answer {
   modelVersion: string;
   dataAsOf: string | null; // ISO; latest sync among cited artifacts (freshness, FR-014)
   degraded?: { reason: 'sync_stale' | 'source_disconnected'; sources: string[] };
+  /** Decision Memory four-state boundary (US2). Present when a relevant confirmed decision grounded
+   *  the answer and/or a relevant UNCONFIRMED candidate exists. Unconfirmed content never appears here
+   *  — only metadata (count, source pointers, queue link). Absent = the `none` state. */
+  decisionStatus?: DecisionStatus;
 }
 
 export interface AnswerInput {
@@ -151,9 +156,25 @@ export function parseTimeWindow(question: string, now: Date): { since?: string; 
 export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promise<Answer> {
   const model = deps.llm.chat.model;
   const base: Pick<Answer, 'model' | 'modelVersion'> = { model, modelVersion: model };
-  const noAnswer = (degraded?: Answer['degraded']): Answer => ({
-    status: 'no_grounded_answer', claims: [], generatedText: null, dataAsOf: null, ...base, ...(degraded ? { degraded } : {}),
-  });
+
+  // Embed the query ONCE and share it across retrieve / searchDecisions / matchUnconfirmedCandidates
+  // (R7 — Voyage RPM). All three accept a precomputed vector.
+  const queryVec = (await deps.llm.embeddings.embed([input.question], 'query'))[0]!;
+
+  // Decision status is resolved OUTSIDE the LLM from metadata-only matches (US2). Computed up front so
+  // it can be attached even to a no_grounded_answer ("not settled yet — there's an unconfirmed
+  // candidate"). unconfirmedMatches carry NO decision content, so nothing here can leak into the prompt.
+  let unconfirmedMatches: UnconfirmedMatch[] = [];
+  let supersedingIds = new Set<string>();
+  const decisionStatusFor = (claims: Claim[]): DecisionStatus | undefined =>
+    resolveDecisionStatus(claims, unconfirmedMatches, supersedingIds);
+  const noAnswer = (degraded?: Answer['degraded']): Answer => {
+    const decisionStatus = decisionStatusFor([]);
+    return {
+      status: 'no_grounded_answer', claims: [], generatedText: null, dataAsOf: null, ...base,
+      ...(degraded ? { degraded } : {}), ...(decisionStatus ? { decisionStatus } : {}),
+    };
+  };
 
   // 1. Retrieve ACL/tenant-scoped candidates (the only source of truth for grounding).
   //    A time phrase in the question ("today", "this week") constrains by date, not just semantics.
@@ -163,6 +184,7 @@ export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promis
     requesterUserId: input.requesterUserId,
     query: input.question,
     k: input.k ?? 8,
+    queryVec,
     ...(window.since ? { since: window.since } : {}),
     ...(window.until ? { until: window.until } : {}),
   });
@@ -172,13 +194,14 @@ export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promis
   // user's own recent activity ("today"), where org decisions aren't what's being asked.
   const items: RetrievedItem[] = [...artifactItems];
   if (!window.since) {
-    const decisions = await searchDecisions(deps, input.workspaceId, input.question, 4);
+    const decisions = await searchDecisions(deps, input.workspaceId, input.question, 4, undefined, queryVec);
     for (const d of decisions) {
+      if (d.supersedesId) supersedingIds.add(d.id); // a settled record that replaced an older one
       items.push({
         artifactId: d.id,
         type: 'decision',
         externalRef: 'decision',
-        source: 'decision', // not a URL-bearing source → citationUrl returns null (label only)
+        source: 'decision', // not a URL-bearing source → answer.ts links it to /decisions/{id}
         repoOrProject: null,
         title: d.title,
         snippet: d.decision ?? d.title,
@@ -188,6 +211,8 @@ export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promis
         isStale: d.freshnessFlag,
       });
     }
+    // Metadata-only unconfirmed matches for the status boundary (never grounding candidates).
+    unconfirmedMatches = await matchUnconfirmedCandidates(deps, input.workspaceId, input.question, 4, queryVec);
   }
 
   if (items.length === 0) return noAnswer(degraded);
@@ -207,6 +232,7 @@ export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promis
   if (claims.length === 0) return noAnswer(degraded); // nothing survived verification
 
   const dataAsOf = citedIso.sort().at(-1) ?? null; // latest sync among cited artifacts
+  const decisionStatus = decisionStatusFor(claims);
   return {
     status: 'grounded',
     claims,
@@ -214,5 +240,6 @@ export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promis
     dataAsOf,
     ...base,
     ...(degraded ? { degraded } : {}),
+    ...(decisionStatus ? { decisionStatus } : {}),
   };
 }

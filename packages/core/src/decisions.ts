@@ -1,7 +1,9 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { schema } from '@falcon/db';
 import { EMBEDDING_MODEL, EMBEDDING_VERSION } from '@falcon/llm';
+import { DECISION_RELEVANCE_MAX_DISTANCE } from '@falcon/config';
 import type { CoreDeps } from './deps.js';
+import type { UnconfirmedMatch } from './decision-status.js';
 
 export interface DecisionResult {
   id: string;
@@ -177,6 +179,47 @@ export async function getDecision(
       createdAt: r.createdAt.toISOString(),
       freshnessFlag: r.createdAt.getTime() < horizon,
     };
+  });
+}
+
+/**
+ * Match UNCONFIRMED candidates to a question (US2, FR-008) — returns METADATA ONLY:
+ * `{ id, sourceRef, createdAt, distance }`. It deliberately does NOT select decision/rationale/
+ * options/title, so unconfirmed content cannot leak into an answer or a prompt (the boundary is
+ * enforced at the query, not by trust). Filters `status='unconfirmed' AND dismissed_at IS NULL` and
+ * keeps only matches within the relevance ceiling (research.md R1). `queryVec` (R7) shares one embed.
+ */
+export async function matchUnconfirmedCandidates(
+  deps: CoreDeps,
+  workspaceId: string,
+  query: string,
+  k = 4,
+  queryVec?: number[],
+): Promise<UnconfirmedMatch[]> {
+  return deps.db.withTenant(workspaceId, async (tx) => {
+    const qvec = queryVec ?? (await deps.llm.embeddings.embed([query], 'query'))[0];
+    const vecStr = `[${qvec!.join(',')}]`;
+    const dist = sql<number>`${schema.decisionRecord.embedding} <=> ${vecStr}::vector`;
+    const rows = await tx
+      .select({
+        id: schema.decisionRecord.id,
+        sourceRef: schema.decisionRecord.sourceRef,
+        createdAt: schema.decisionRecord.createdAt,
+        distance: dist,
+      })
+      .from(schema.decisionRecord)
+      .where(
+        and(
+          eq(schema.decisionRecord.status, 'unconfirmed'),
+          isNull(schema.decisionRecord.dismissedAt),
+          sql`${schema.decisionRecord.embedding} is not null`,
+        ),
+      )
+      .orderBy(dist)
+      .limit(k);
+    return rows
+      .map((r) => ({ id: r.id, sourceRef: r.sourceRef, createdAt: r.createdAt.toISOString(), distance: Number(r.distance) }))
+      .filter((m) => m.distance <= DECISION_RELEVANCE_MAX_DISTANCE);
   });
 }
 

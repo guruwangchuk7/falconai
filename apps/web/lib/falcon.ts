@@ -86,6 +86,7 @@ export async function runFalconTurn(
     status: answer.status,
     claims: answer.claims,
     dataAsOf: answer.dataAsOf,
+    ...(answer.decisionStatus ? { decisionStatus: answer.decisionStatus } : {}),
     ...(answer.degraded ? { degraded: answer.degraded } : {}),
     ...(answer.status === 'no_grounded_answer'
       ? { message: "I don't have anything in your synced work that answers this." }

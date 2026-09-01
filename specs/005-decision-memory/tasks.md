@@ -55,7 +55,7 @@ calibrated `DECISION_RELEVANCE_MAX_DISTANCE`; do NOT hardcode blind.
   `retrieve()` in `packages/core/src/retrieve.ts` and `searchDecisions()` in
   `packages/core/src/decisions.ts` — use it when present, else embed internally (preserves existing
   callers). No behavior change for current callers.
-- [ ] T007 [P] Unit test the queryVec plumbing in `packages/core/src/retrieve.test.ts` /
+- [X] T007 [P] Unit test the queryVec plumbing in `packages/core/src/retrieve.test.ts` /
   `decisions.test.ts`: passing a precomputed vector skips the internal embed call (spy asserts one/zero
   embed calls) and returns identical results.
 
@@ -121,33 +121,33 @@ payload contains no unconfirmed-content strings.
 
 ### Tests for US2 ⚠️ (write first, must fail)
 
-- [ ] T020 [P] [US2] Pure unit test `packages/core/src/decision-status.test.ts`: `resolveDecisionStatus`
+- [X] T020 [P] [US2] Pure unit test `packages/core/src/decision-status.test.ts`: `resolveDecisionStatus`
   returns `settled` (via a `type==='decision'` citation), `proposed`, `settled`+`pendingChange`
   (co-occur), and `undefined` (none) for the right inputs; never includes decision/rationale/options text.
-- [ ] T021 [P] [US2] Unit test `packages/core/src/decisions.test.ts`: `matchUnconfirmedCandidates` result
+- [X] T021 [P] [US2] Unit test `packages/core/src/decisions.test.ts`: `matchUnconfirmedCandidates` result
   objects have ONLY `{id, sourceRef, createdAt, distance}` keys (no content fields) and exclude
   `dismissed_at IS NOT NULL` rows and rows beyond the ceiling.
-- [ ] T022 [P] [US2] Integration test `packages/core/src/answer.int.test.ts` (real Postgres): the four
+- [X] T022 [P] [US2] Integration test `packages/core/src/answer.int.test.ts` (real Postgres): the four
   Scenario-B cases end-to-end; a leakage assertion greps the full answer payload for seeded unconfirmed
   strings and expects zero; exactly ONE query-embed call per question (Scenario F).
 
 ### Implementation for US2
 
-- [ ] T023 [US2] Implement `matchUnconfirmedCandidates(deps, workspaceId, query|queryVec, k)` in
+- [X] T023 [US2] Implement `matchUnconfirmedCandidates(deps, workspaceId, query|queryVec, k)` in
   `packages/core/src/decisions.ts` — SELECT only `id, source_ref, created_at, distance`;
   `status='unconfirmed' AND dismissed_at IS NULL AND distance <= DECISION_RELEVANCE_MAX_DISTANCE`; via
   `withTenant`. (contracts/core.md, R3)
-- [ ] T024 [P] [US2] Implement pure `resolveDecisionStatus(answer, matches)` in NEW
+- [X] T024 [P] [US2] Implement pure `resolveDecisionStatus(answer, matches)` in NEW
   `packages/core/src/decision-status.ts` — detect settled via `answer.claims[].citations[].type==='decision'`
   (+`changed` if that record has `supersedesId`); build `pendingChange`/`proposed` from `matches`
   (metadata only). Export from `index.ts`. (R4/R5)
-- [ ] T025 [US2] Add `decisionStatus?: DecisionStatus` to the `Answer` type in
+- [X] T025 [US2] Add `decisionStatus?: DecisionStatus` to the `Answer` type in
   `packages/core/src/answer.ts` and the `DecisionStatus`/`PendingRef` types (data-model.md §2).
-- [ ] T026 [US2] Integrate in `answerQuestion` (`packages/core/src/answer.ts`): embed query ONCE →
+- [X] T026 [US2] Integrate in `answerQuestion` (`packages/core/src/answer.ts`): embed query ONCE →
   `queryVec`; pass to `retrieve` + `searchDecisions`; call `matchUnconfirmedCandidates(queryVec)` (skip
   when time-scoped to own activity); set `answer.decisionStatus = resolveDecisionStatus(...)`. LLM prompt
   UNCHANGED. (R7)
-- [ ] T027 [US2] Render `answer.decisionStatus` in `apps/web/app/(dashboard)/falcon/FalconPanel.tsx` — a
+- [X] T027 [US2] Render `answer.decisionStatus` in `apps/web/app/(dashboard)/falcon/FalconPanel.tsx` — a
   neutral footer ("Not settled yet — unconfirmed candidate(s) [from #NN] · Open the queue") for
   proposed/pendingChange; nothing extra for settled. No unconfirmed content rendered. (contracts/http.md)
 
