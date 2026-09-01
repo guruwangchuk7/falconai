@@ -146,6 +146,17 @@ it('below-threshold candidate → no_decision with max score recorded', async ()
   expect(Number(led[0]!.max_candidate_score)).toBeCloseTo(0.4);
 });
 
+it('within-run duplicate candidates (same normalized title) dedup to a single decision record', async () => {
+  cannedChat = '{"candidates":[{"title":"Adopt Redis","decision":"Use Redis for caching","score":0.9},{"title":"Adopt Redis","decision":"Use Redis for caching too","score":0.9}]}';
+  const art = '00000000-0000-0000-0000-0000000000c6';
+  await seedArtifact(art, 'Add Redis cache', 'We chose Redis.');
+  const out = await handleMine(deps, { workspaceId: A, artifactId: art });
+  expect(out.result).toBe('suggested');
+  expect(out.decisionIds.length).toBe(1);
+  const rows = await tdb.admin`select id from decision_record where source_ref = ${'#' + art.slice(-2)}`;
+  expect(rows.length).toBe(1);
+});
+
 it('transient extractor error THROWS (BullMQ retry) and writes NO ledger row — artifact stays re-minable', async () => {
   const art = '00000000-0000-0000-0000-0000000000c5';
   await seedArtifact(art, 'Flaky', 'body');

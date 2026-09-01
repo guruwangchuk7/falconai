@@ -1,4 +1,4 @@
-import { and, asc, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { createDb, schema } from '@falcon/db';
 import { createLlmProviders } from '@falcon/llm';
 import { extractDecisions, type ScoredCandidate } from '@falcon/core';
@@ -70,7 +70,14 @@ export async function runShadow(workspaceId: string): Promise<void> {
           mergedClosedAt: schema.artifact.mergedClosedAt,
         })
         .from(schema.artifact)
-        .where(and(inArray(schema.artifact.type, MINE_TYPES), inArray(schema.artifact.state, MINE_STATES)))
+        // Explicit workspace_id predicate (belt-and-suspenders alongside withTenant's RLS): if this
+        // ever runs under a DATABASE_URL whose role bypasses RLS (e.g. superuser), the query must
+        // still stay scoped to one workspace instead of silently pulling every tenant's artifacts.
+        .where(and(
+          eq(schema.artifact.workspaceId, workspaceId),
+          inArray(schema.artifact.type, MINE_TYPES),
+          inArray(schema.artifact.state, MINE_STATES),
+        ))
         .orderBy(asc(schema.artifact.mergedClosedAt)),
     );
 

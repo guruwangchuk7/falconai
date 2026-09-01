@@ -122,9 +122,16 @@ export async function handleMine(deps: CoreDeps, payload: { workspaceId: string;
 
   const maxScore = candidates.reduce((m, c) => Math.max(m, c.score), 0);
   const decisionIds: string[] = [];
+  // Within-run dedup: an extraction can return two candidates with the same normalized title;
+  // isSuppressed only sees rows already committed to the DB, so two same-titled candidates in
+  // one run would both pass it (neither is written yet) and create duplicate suggested records.
+  // Track titles created THIS run locally to catch that case too.
+  const createdTitlesThisRun = new Set<string>();
   for (const c of candidates) {
     if (c.score < DECISION_MINE_MIN_CONFIDENCE) continue;
-    if (await isSuppressed(deps, workspaceId, art.externalRef, normalizeTitle(c.title))) continue;
+    const norm = normalizeTitle(c.title);
+    if (createdTitlesThisRun.has(norm)) continue;
+    if (await isSuppressed(deps, workspaceId, art.externalRef, norm)) continue;
     const { id } = await createDecision(deps, workspaceId, {
       title: c.title, decision: c.decision,
       ...(c.rationale !== undefined && { rationale: c.rationale }),
@@ -132,6 +139,7 @@ export async function handleMine(deps: CoreDeps, payload: { workspaceId: string;
       ...(c.dissent !== undefined && { dissent: c.dissent }),
       ownerUserId: art.userId, sourceRef: art.externalRef, origin: 'suggested', // provenance: artifact ref, NEVER model output
     });
+    createdTitlesThisRun.add(norm);
     decisionIds.push(id);
   }
   const result: MineResult = decisionIds.length ? 'suggested' : 'no_decision';

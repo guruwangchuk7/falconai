@@ -34,6 +34,12 @@ export class LinearAdapter implements SourceAdapter {
     }
   }
 
+  // NOTE: intentionally does not set `state` / `mergedClosedAt` today — this is dead code, since
+  // webhooks currently just enqueue a plain sync that calls `listChanged` (which DOES set them),
+  // not this parsed output. If `SyncJob.delta` is ever wired to use `parseWebhook`'s output
+  // directly, it MUST populate `state` here too: `upsertArtifact`'s `set` clause writes
+  // `state: input.state ?? null` unconditionally on conflict, so a missing `state` would clobber
+  // a previously-polled state back to null.
   parseWebhook(payload: unknown): ArtifactInput[] | null {
     const e = payload as { type?: string; data?: { identifier?: string; title?: string; description?: string | null; updatedAt?: string } };
     if (e.type === 'Issue' && e.data?.identifier) {
