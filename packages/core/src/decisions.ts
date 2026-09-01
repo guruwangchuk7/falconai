@@ -159,6 +159,25 @@ export async function dismissDecision(deps: CoreDeps, workspaceId: string, id: s
   });
 }
 
+/** List confirmed decisions (id + title), newest first — for the supersede picker (US3). Optionally
+ *  excludes one id (the record doing the superseding). */
+export async function listConfirmedDecisions(
+  deps: CoreDeps,
+  workspaceId: string,
+  excludeId?: string,
+  limit = 50,
+): Promise<{ id: string; title: string }[]> {
+  return deps.db.withTenant(workspaceId, async (tx) => {
+    const rows = await tx
+      .select({ id: schema.decisionRecord.id, title: schema.decisionRecord.title })
+      .from(schema.decisionRecord)
+      .where(eq(schema.decisionRecord.status, 'confirmed'))
+      .orderBy(desc(schema.decisionRecord.createdAt))
+      .limit(limit);
+    return excludeId ? rows.filter((r) => r.id !== excludeId) : rows;
+  });
+}
+
 /** List the unconfirmed queue (US1) — awaiting human ratification, excluding dismissed. Newest first,
  *  bounded (review finding #5) so a large backlog can't load unboundedly. */
 export async function listQueue(deps: CoreDeps, workspaceId: string, limit = 100): Promise<QueueItem[]> {

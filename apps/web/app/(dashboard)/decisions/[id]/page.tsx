@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { getDecision } from '@falcon/core';
+import { getDecision, listConfirmedDecisions } from '@falcon/core';
 import { getActiveSession } from '@/lib/session';
 import { deps } from '@/lib/deps';
+import { SupersedeControl } from './SupersedeControl';
 
 export const runtime = 'nodejs';
 
@@ -34,6 +35,11 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
       </main>
     );
   }
+
+  // Supersede is offered only on a confirmed decision that isn't already part of a chain
+  // (hasn't superseded another, and hasn't itself been superseded).
+  const canSupersede = d.status === 'confirmed' && !d.supersedesId && !d.supersededById;
+  const candidates = canSupersede ? await listConfirmedDecisions(deps(), session.workspaceId, d.id) : [];
 
   const options = Array.isArray(d.options) ? (d.options as unknown[]) : null;
   return (
@@ -70,6 +76,13 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
         {d.confirmedAt && <Row label="Confirmed">{new Date(d.confirmedAt).toLocaleString()}{d.confirmedBy ? ` · ${d.confirmedBy}` : ''}</Row>}
         <Row label="Created">{new Date(d.createdAt).toLocaleString()}</Row>
       </div>
+
+      {canSupersede && (
+        <div className="mt-5 rounded border border-hairline p-3">
+          <div className="mb-2 text-xs uppercase tracking-wide text-muted">Supersede an earlier decision</div>
+          <SupersedeControl id={d.id} candidates={candidates} />
+        </div>
+      )}
     </main>
   );
 }
