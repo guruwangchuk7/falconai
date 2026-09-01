@@ -3,7 +3,7 @@
 // typed surface the app queries through. Every tenant table carries workspace_id.
 
 import {
-  pgTable, uuid, text, jsonb, timestamp, integer, boolean, bigint, vector, unique,
+  pgTable, uuid, text, jsonb, timestamp, integer, boolean, bigint, vector, unique, real, primaryKey,
 } from 'drizzle-orm/pg-core';
 
 export const workspace = pgTable('workspace', {
@@ -42,6 +42,7 @@ export const connection = pgTable('connection', {
   lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
   lastError: text('last_error'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  mineWatermark: timestamp('mine_watermark', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const artifact = pgTable('artifact', {
@@ -60,6 +61,8 @@ export const artifact = pgTable('artifact', {
   lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }).notNull().defaultNow(),
   isStale: boolean('is_stale').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  state: text('state'),                                 // merged | closed | open | completed | canceled | ...
+  mergedClosedAt: timestamp('merged_closed_at', { withTimezone: true }),
 });
 
 export const artifactChunk = pgTable('artifact_chunk', {
@@ -94,6 +97,7 @@ export const decisionRecord = pgTable('decision_record', {
   embeddingModel: text('embedding_model'),
   embeddingVersion: text('embedding_version'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  origin: text('origin').notNull().default('manual'),   // ship 2: manual | mined (queue badges "Suggested from …")
 });
 
 export const workDigest = pgTable('work_digest', {
@@ -118,6 +122,19 @@ export const syncRun = pgTable('sync_run', {
   error: text('error'),
   artifactsSynced: integer('artifacts_synced').notNull().default(0),
 });
+
+// Ship 2 (Decision Miner) — mine-once idempotency ledger (0005_decision_miner.sql). Not
+// partitioned (low volume, one row per mined artifact).
+export const minedArtifact = pgTable('mined_artifact', {
+  workspaceId: uuid('workspace_id').notNull(),
+  artifactId: uuid('artifact_id').notNull(),
+  minedAt: timestamp('mined_at', { withTimezone: true }).notNull().defaultNow(),
+  result: text('result').notNull(), // suggested | no_decision | error | deferred
+  extractorVersion: text('extractor_version').notNull(),
+  contentHash: text('content_hash').notNull(),
+  decisionId: uuid('decision_id'),
+  maxCandidateScore: real('max_candidate_score'),
+}, (t) => ({ pk: primaryKey({ columns: [t.workspaceId, t.artifactId] }) }));
 
 // ---------- Phase 2: Personal Falcon (0002_personal_falcon.sql) ----------
 

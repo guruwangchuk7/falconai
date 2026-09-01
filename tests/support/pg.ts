@@ -10,6 +10,11 @@ const MIGRATION = resolve(HERE, '../../packages/db/drizzle/0001_init.sql');
 // matchUnconfirmedCandidates) now reads. Applied in the base so every test DB has it — it is an
 // idempotent `ADD COLUMN IF NOT EXISTS`, so tests that also apply it explicitly still work.
 const MIGRATION_DISMISSED = resolve(HERE, '../../packages/db/drizzle/0004_decision_dismissed_at.sql');
+// 0005 (Ship 2 / Decision Miner) adds artifact.state/merged_closed_at, decision_record.origin,
+// connection.mine_watermark, and the mined_artifact ledger (with its own RLS policy). Applied in
+// the base — like 0004 — so every test DB has it; idempotent `ADD COLUMN IF NOT EXISTS` / `CREATE
+// TABLE IF NOT EXISTS`, so tests that also apply it explicitly still work.
+const MIGRATION_MINER = resolve(HERE, '../../packages/db/drizzle/0005_decision_miner.sql');
 
 export interface TestDb {
   container: StartedPostgreSqlContainer;
@@ -36,6 +41,7 @@ export async function startTestDb(): Promise<TestDb> {
 
   await admin.unsafe(readFileSync(MIGRATION, 'utf8'));
   await admin.unsafe(readFileSync(MIGRATION_DISMISSED, 'utf8'));
+  await admin.unsafe(readFileSync(MIGRATION_MINER, 'utf8'));
   await admin.unsafe(`
     create role falcon_app login password 'app';
     grant usage on schema public to falcon_app;
