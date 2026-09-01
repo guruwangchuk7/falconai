@@ -26,9 +26,14 @@ let deps: CoreDeps;
 // decision-memory.test.ts). Tasks 4/5 tests in this file use embeddings, not chat, so this
 // default (empty candidates) never affects them.
 let cannedChat = '{"candidates":[]}';
+// When true, the fake chat provider throws to simulate a transient upstream (network/5xx/429) error.
+let chatThrows = false;
 
 const llm: LlmProviders = {
-  chat: { model: 'test-model', complete: async () => ({ text: cannedChat, usage: { inputTokens: 0, outputTokens: 0 } }) },
+  chat: { model: 'test-model', complete: async () => {
+    if (chatThrows) throw new Error('transient upstream');
+    return { text: cannedChat, usage: { inputTokens: 0, outputTokens: 0 } };
+  } },
   embeddings: { model: EMBEDDING_MODEL, version: EMBEDDING_VERSION, dim: 1024, embed: async (texts: string[]) => texts.map(() => Array(1024).fill(0.1)) },
   rerank: { model: 'r', rerank: async () => [] },
 } as unknown as LlmProviders;
@@ -110,7 +115,7 @@ it('provenance gate: ignores a sourceRef the model emits, uses the artifact ref'
   await seedArtifact(art, 'Some PR', 'body');
   const out = await handleMine(deps, { workspaceId: A, artifactId: art });
   const rec = await tdb.admin`select source_ref from decision_record where id = ${out.decisionIds[0]}`;
-  expect(rec[0]!.source_ref).not.toBe('#HACK'); // uses artifact external_ref, never model output
+  expect(rec[0]!.source_ref).toBe('#c2'); // the seeded artifact's external_ref, never the model's '#HACK'
 });
 
 it('re-mining the same artifact+version+hash is a skip (no dup)', async () => {
@@ -131,4 +136,17 @@ it('below-threshold candidate → no_decision with max score recorded', async ()
   expect(out.result).toBe('no_decision');
   const led = await tdb.admin`select max_candidate_score from mined_artifact where artifact_id = ${art}`;
   expect(Number(led[0]!.max_candidate_score)).toBeCloseTo(0.4);
+});
+
+it('transient extractor error THROWS (BullMQ retry) and writes NO ledger row — artifact stays re-minable', async () => {
+  const art = '00000000-0000-0000-0000-0000000000c5';
+  await seedArtifact(art, 'Flaky', 'body');
+  chatThrows = true;
+  try {
+    await expect(handleMine(deps, { workspaceId: A, artifactId: art })).rejects.toThrow();
+    const led = await tdb.admin`select artifact_id from mined_artifact where artifact_id = ${art}`;
+    expect(led.length).toBe(0); // no terminal 'error' row → ledger gate won't skip the retry
+  } finally {
+    chatThrows = false; // don't leak the throwing provider into later tests
+  }
 });

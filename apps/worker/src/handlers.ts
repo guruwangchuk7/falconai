@@ -105,13 +105,12 @@ export async function handleMine(deps: CoreDeps, payload: { workspaceId: string;
     return { result: 'deferred', decisionIds: [] };
   }
 
-  let candidates;
-  try {
-    candidates = await extractDecisions(deps, { segments, sourceRef: art.externalRef, ownerHint: art.userId });
-  } catch {
-    await recordMined(deps, workspaceId, artifactId, { result: 'error', extractorVersion: EXTRACTOR_VERSION, contentHash: hash });
-    return { result: 'error', decisionIds: [] };
-  }
+  // Transient LLM/API errors (network/5xx/429) THROW → propagate out so BullMQ retries (spec §5).
+  // We must NOT write an 'error' ledger row here: that would pin the artifact at this version+hash
+  // and the ledger gate would then permanently skip it, silently dropping the PR's decision forever.
+  // Malformed JSON never reaches here — extractDecisions handles it internally (returns [] after a
+  // re-call). The reserved 'error' MineResult value stays in the union/CHECK constraint, now unused.
+  const candidates = await extractDecisions(deps, { segments, sourceRef: art.externalRef, ownerHint: art.userId });
 
   const maxScore = candidates.reduce((m, c) => Math.max(m, c.score), 0);
   const decisionIds: string[] = [];
