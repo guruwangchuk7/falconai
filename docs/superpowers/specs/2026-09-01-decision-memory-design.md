@@ -3,8 +3,8 @@
 **Date:** 2026-09-01
 **Feature slug (Spec Kit):** `005-decision-memory`
 **Sprint:** Sprint 1 of `reviews/near-term-plan-2026-09.md`
-**Status:** design pending owner review (revised 2026-09-01 after code-checking review feedback); on
-approval → `/speckit-specify`
+**Status:** **APPROVED by Guru (2026-09-01)** after two review rounds (peer-review + engineering
+code-check); next step = `/speckit-specify`
 
 ---
 
