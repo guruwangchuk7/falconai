@@ -3,7 +3,8 @@
 **Date:** 2026-09-01
 **Feature slug (Spec Kit):** `005-decision-memory`
 **Sprint:** Sprint 1 of `reviews/near-term-plan-2026-09.md`
-**Status:** design approved by Guru (2026-09-01); next step = `/speckit-specify`
+**Status:** design pending owner review (revised 2026-09-01 after code-checking review feedback); on
+approval → `/speckit-specify`
 
 ---
 
@@ -60,8 +61,10 @@ and the retriever cannot yet distinguish "no decision" from "an unconfirmed cand
 
 **Exit signal (falsifiable — set the bar before the pilot runs, while there's no stake in the
 outcome):** **≥ 3 of 5 pilot engineers ask Falcon ≥ 2 decision questions in pilot week 2** (i.e.
-return after week 1, not just a first-touch). Supporting proxy: **≥ 1 decision record confirmed per
-active engineer per week** during the pilot. See §11 for instrumentation and the G6 note.
+return after week 1, not just a first-touch). *Decision question* has a no-classifier operational
+definition — an answer that cited a decision record or carried a `decisionStatus` (§11 open Q3).
+Supporting proxy: **≥ 1 decision record confirmed per active engineer per week** during the pilot.
+See §11 for instrumentation and the G6 note.
 
 ---
 
@@ -84,8 +87,9 @@ No question-specific code. New sources plug into the same retriever later.
 ## 5. The four-state source boundary (the load-bearing rule)
 
 Owner's rule (2026-09-01): **unconfirmed decisions must be visible as status metadata, but never as
-evidence.** When a decision candidate is relevant to *any* question, it resolves to exactly one
-state, and each state has a hard boundary on what may cross into the answer:
+evidence.** When a decision candidate is relevant to *any* question, it resolves to one of these
+states (and a `confirmed` answer may *additionally* carry a pending change — see below). Each state
+has a hard boundary on what may cross into the answer:
 
 | State | What Falcon conveys | What may cross the boundary into the answer |
 |---|---|---|
@@ -130,8 +134,8 @@ Enforced by two mechanical properties (below), not by prompt instructions.
    confirmed and unconfirmed checks are **independent** (per §5, they co-occur):
    - `settled` when a confirmed decision grounded a surviving claim (record id; note `changed` if it
      `supersedes` a prior record);
-   - `pendingChange` / `proposed_unconfirmed` when a strongly-matching unconfirmed candidate exists
-     (distance below the match threshold **and** above the small-corpus floor — see §11), carrying
+   - `pendingChange` / `proposed_unconfirmed` when an unconfirmed candidate matches within the
+     **relevance ceiling** (a single absolute max-distance cutoff — see §11), carrying
      `{ sourceRefs, queueLink, count }` only. Attached as `pendingChange` alongside a `settled`
      answer, or as the standalone `proposed_unconfirmed` state when nothing confirmed grounded;
    - neither → omit.
@@ -205,8 +209,10 @@ Product framing/UI copy: **"Decision Memory."** Code/data keep the PRD term **Or
 
 ## 8. Testing strategy
 
-- **Unit (pure):** status resolver returns `settled` / `proposed_unconfirmed` / omitted correctly;
-  `matchUnconfirmedCandidates` never returns content fields; supersede excludes the old record.
+- **Unit (pure):** status resolver returns `settled` / `proposed_unconfirmed` / omitted correctly,
+  **and returns `settled` + `pendingChange` together** when a confirmed record and a relevant
+  unconfirmed candidate both exist (the flagship §5 case); `matchUnconfirmedCandidates` never returns
+  content fields and excludes `dismissed`; supersede excludes the old record.
 - **Integration (real Postgres, RLS on):** capture → confirm → search → general Q&A returns a
   grounded, cited answer; unconfirmed candidate yields a status line but **never** a claim/citation;
   superseded record is excluded from grounding; cross-tenant read returns nothing (SC-003 style).
@@ -239,25 +245,33 @@ model versions) · §6 / §16 (compounding org decision memory = the moat).
 
 **Open questions (resolve during `/speckit-plan`, not left implicit):**
 
-1. **Match threshold for the status resolver (§6.1.4).** What cosine-distance cutoff makes an
-   unconfirmed candidate "relevant enough" to surface? There is no threshold anywhere in retrieval
-   today (`retrieve` / `searchDecisions` just `orderBy(dist).limit(k)`). Too loose → answers grow a
-   spurious "there's an unconfirmed candidate" footer until people learn to ignore it (the feature
-   dies of noise). Proposed method: calibrate on the pilot corpus rather than guessing a constant;
-   start conservative (surface only very close matches) and loosen on evidence. **Make-or-break.**
-2. **Small-corpus retrieval floor.** At N≈10 records, vector top-k is near-arbitrary and will
-   confidently surface an unrelated decision — the first thing a tester hits. This is a latent
-   property of the **already-shipped** `searchDecisions` too, not just the new resolver. Need an
-   absolute distance floor (below which we return nothing) applied before any decision result is
-   shown. Decide the floor + whether to backfill it into `searchDecisions`.
-3. **Dismiss ↔ miner interaction (§6.2).** Confirm the tombstone-by-`sourceRef` suppression is the
+1. **The relevance ceiling (§6.1.4) — one cutoff, two reasons it's needed.** What absolute cosine
+   **max-distance** makes an unconfirmed candidate "relevant enough" to surface? (Distance metric:
+   smaller = closer; the ceiling is the largest distance we'll still surface. Equivalently a minimum
+   similarity.) There is no such cutoff anywhere in retrieval today — `retrieve` / `searchDecisions`
+   just `orderBy(dist).limit(k)`, so they always return their k nearest even when nothing is actually
+   relevant. Two failure modes this cutoff prevents:
+   - *Noise:* too loose → answers grow a spurious "there's an unconfirmed candidate" footer until
+     people learn to ignore it (the feature dies of noise).
+   - *Small corpus:* at N≈10 records, top-k is near-arbitrary and will confidently surface an
+     unrelated decision — the first thing a tester hits. This is a latent property of the
+     **already-shipped** `searchDecisions` too.
+   Proposed method: calibrate the ceiling on the pilot corpus rather than guessing a constant; start
+   conservative (surface only very close matches) and loosen on evidence. Decide whether to backfill
+   the same ceiling into `searchDecisions`. **Make-or-break.**
+2. **Dismiss ↔ miner interaction (§6.2).** Confirm the tombstone-by-`sourceRef` suppression is the
    chosen mechanism (vs. a separate suppression table) before building the miner.
+3. **"Decision question" definition (metrics).** The retention signal counts "decision questions,"
+   but we deliberately do **not** classify questions by type (§4). Operational definition to lock:
+   a *decision question* = **a question whose answer cited ≥ 1 decision record OR carried a
+   `decisionStatus`** — measurable without a classifier, consistent with the general-Q&A design.
 
 **Instrumentation (day one — the product is downstream of whether people confirm):**
 
 - **Confirmations/week** and **median unconfirmed-queue age** (is the confirm ritual actually
   happening, or is the queue rotting?).
-- **Decision questions asked / engineer / week** (the retention exit signal, §3).
+- **Decision questions asked / engineer / week** — answers that cited a decision record or carried a
+  `decisionStatus` (the retention exit signal, §3; definition in open Q3).
 - **Status-resolver fire rate** — how often answers carry a `proposed_unconfirmed` / `pendingChange`
   footer (early-warning for a too-loose threshold, open question 1).
 - **Records confirmed / active engineer-week** — the sprint-local proxy for G6 (§1).
