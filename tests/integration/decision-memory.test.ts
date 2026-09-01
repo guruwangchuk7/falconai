@@ -68,7 +68,7 @@ it('confirm makes it retrievable and stamps the confirmer (FR-003); idempotent',
   const first = await confirmDecision(deps, A, id, UA);
   expect(first.status).toBe('confirmed');
   const again = await confirmDecision(deps, A, id, UA);
-  expect(again.status).toBe('noop'); // no state regression
+  expect(again.status).toBe('already_final'); // no state regression
 
   const detail = await getDecision(deps, A, id);
   expect(detail!.status).toBe('confirmed');
@@ -98,7 +98,7 @@ it('tenant isolation: workspace B cannot see or confirm A\'s decision (SC-005/FR
   const { id } = await createDecision(deps, A, { title: 'A-only decision', decision: 'private' });
   expect(await getDecision(deps, B, id)).toBeNull();       // RLS: no cross-tenant read
   const res = await confirmDecision(deps, B, id, UA);
-  expect(res.status).toBe('noop');                          // RLS: no row to confirm from B
+  expect(res.status).toBe('not_found');                     // RLS: no row to confirm from B
   expect((await getDecision(deps, A, id))!.status).toBe('unconfirmed'); // unchanged
 });
 

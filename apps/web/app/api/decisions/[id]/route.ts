@@ -17,12 +17,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   switch (body?.action) {
     case 'confirm': {
-      // 'noop' = nothing was unconfirmed to confirm (already confirmed/superseded, or not found).
       const res = await confirmDecision(deps(), s.workspaceId, id, s.userId);
-      if (res.status === 'missing_decision') {
-        return NextResponse.json({ error: 'Add decision text before confirming.', ...res }, { status: 400 });
-      }
-      return NextResponse.json(res);
+      const httpStatus = ({ confirmed: 200, missing_decision: 400, not_found: 404, already_final: 409 } as const)[res.status];
+      const errors: Partial<Record<typeof res.status, string>> = {
+        missing_decision: 'Add decision text before confirming.',
+        not_found: 'Decision not found.',
+        already_final: 'This decision is already confirmed, superseded, or dismissed.',
+      };
+      return NextResponse.json(errors[res.status] ? { error: errors[res.status], ...res } : res, { status: httpStatus });
     }
     case 'supersede': {
       if (typeof body.supersedesId !== 'string') {

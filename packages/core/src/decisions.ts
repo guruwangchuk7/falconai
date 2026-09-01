@@ -92,14 +92,15 @@ export async function confirmDecision(
   workspaceId: string,
   id: string,
   confirmedBy: string,
-): Promise<{ status: 'confirmed' | 'noop' | 'missing_decision' }> {
+): Promise<{ status: 'confirmed' | 'not_found' | 'already_final' | 'missing_decision' }> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const [row] = await tx
       .select({ status: schema.decisionRecord.status, decision: schema.decisionRecord.decision, dismissedAt: schema.decisionRecord.dismissedAt })
       .from(schema.decisionRecord)
       .where(eq(schema.decisionRecord.id, id))
       .limit(1);
-    if (!row || row.status !== 'unconfirmed' || row.dismissedAt) return { status: 'noop' };
+    if (!row) return { status: 'not_found' }; // absent, or another tenant's record (RLS hides it)
+    if (row.dismissedAt || row.status !== 'unconfirmed') return { status: 'already_final' }; // confirmed/superseded/dismissed
     if (!row.decision || row.decision.trim() === '') return { status: 'missing_decision' };
     await tx
       .update(schema.decisionRecord)
@@ -158,8 +159,9 @@ export async function dismissDecision(deps: CoreDeps, workspaceId: string, id: s
   });
 }
 
-/** List the unconfirmed queue (US1) — awaiting human ratification, excluding dismissed. Newest first. */
-export async function listQueue(deps: CoreDeps, workspaceId: string): Promise<QueueItem[]> {
+/** List the unconfirmed queue (US1) — awaiting human ratification, excluding dismissed. Newest first,
+ *  bounded (review finding #5) so a large backlog can't load unboundedly. */
+export async function listQueue(deps: CoreDeps, workspaceId: string, limit = 100): Promise<QueueItem[]> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const rows = await tx
       .select({
@@ -173,7 +175,8 @@ export async function listQueue(deps: CoreDeps, workspaceId: string): Promise<Qu
       })
       .from(schema.decisionRecord)
       .where(and(eq(schema.decisionRecord.status, 'unconfirmed'), isNull(schema.decisionRecord.dismissedAt)))
-      .orderBy(desc(schema.decisionRecord.createdAt));
+      .orderBy(desc(schema.decisionRecord.createdAt))
+      .limit(limit);
     return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
   });
 }
