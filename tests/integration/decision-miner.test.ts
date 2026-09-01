@@ -111,7 +111,7 @@ it('mines a clear decision into an unconfirmed suggested record + suggested ledg
   await seedArtifact(art, 'Switch DB to Postgres', 'We chose Postgres.');
   const out = await handleMine(deps, { workspaceId: A, artifactId: art });
   expect(out.result).toBe('suggested');
-  const rec = await tdb.admin`select origin, status, source_ref from decision_record where id = ${out.decisionIds[0]}`;
+  const rec = await tdb.admin`select origin, status, source_ref from decision_record where id = ${out.decisionIds[0]!}`;
   expect(rec[0]).toMatchObject({ origin: 'suggested', status: 'unconfirmed' });
   const led = await tdb.admin`select result, extractor_version from mined_artifact where artifact_id = ${art}`;
   expect(led[0]).toMatchObject({ result: 'suggested', extractor_version: EXTRACTOR_VERSION });
@@ -122,7 +122,7 @@ it('provenance gate: ignores a sourceRef the model emits, uses the artifact ref'
   const art = '00000000-0000-0000-0000-0000000000c2';
   await seedArtifact(art, 'Some PR', 'body');
   const out = await handleMine(deps, { workspaceId: A, artifactId: art });
-  const rec = await tdb.admin`select source_ref from decision_record where id = ${out.decisionIds[0]}`;
+  const rec = await tdb.admin`select source_ref from decision_record where id = ${out.decisionIds[0]!}`;
   expect(rec[0]!.source_ref).toBe('#c2'); // the seeded artifact's external_ref, never the model's '#HACK'
 });
 
