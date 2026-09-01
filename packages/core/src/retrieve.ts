@@ -15,6 +15,10 @@ export interface RetrieveInput {
    *  last month" actually constrain results by date, not just semantics. */
   since?: string;
   until?: string;
+  /** Precomputed query embedding (feature 005 R7). When provided, retrieval reuses it instead of
+   *  embedding again — lets the caller embed the query ONCE and share it across retrieve /
+   *  searchDecisions / matchUnconfirmedCandidates (Voyage RPM). Must be the pinned model's vector. */
+  queryVec?: number[];
 }
 
 export interface RetrievedItem {
@@ -56,7 +60,7 @@ export async function retrieve(deps: CoreDeps, input: RetrieveInput): Promise<Re
     const accessible = input.accessibleTags ?? (await accessibleTagsFor(tx, input.requesterUserId));
     if (accessible.length === 0) return { items: [] };
 
-    const [qvec] = await deps.llm.embeddings.embed([input.query], 'query');
+    const qvec = input.queryVec ?? (await deps.llm.embeddings.embed([input.query], 'query'))[0];
     const vecStr = `[${qvec!.join(',')}]`;
     const dist = sql<number>`${schema.artifactChunk.embedding} <=> ${vecStr}::vector`;
 

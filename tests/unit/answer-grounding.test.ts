@@ -91,6 +91,19 @@ describe('groundClaims (verify-then-drop)', () => {
     const { claims } = groundClaims([{ text: 'did X', citations: [1] }], items);
     expect(claims[0]!.citations[0]!.url).toBe('https://github.com/owner/repo1/commit/sha1');
   });
+
+  // Feature 005 US1 (T019): a confirmed-decision citation links to its detail view, and the chip
+  // label uses the decision title rather than the bare "decision" externalRef.
+  it('links a decision citation to its detail view and labels it by title', () => {
+    const decisionItem: RetrievedItem = {
+      artifactId: 'dec-7', type: 'decision', externalRef: 'decision', title: 'Adopt Deepgram',
+      source: 'decision', repoOrProject: null, snippet: 'we chose deepgram', score: 0.1,
+      trustTier: 'trusted', lastSyncedAt: '2026-08-29T00:00:00.000Z', isStale: false,
+    };
+    const { claims } = groundClaims([{ text: 'we chose Deepgram', citations: [1] }], [decisionItem]);
+    expect(claims[0]!.citations[0]!.url).toBe('/decisions/dec-7');
+    expect(claims[0]!.citations[0]!.externalRef).toBe('Adopt Deepgram');
+  });
 });
 
 describe('citationUrl', () => {

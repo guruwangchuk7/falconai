@@ -109,7 +109,11 @@ export function groundClaims(
     for (const n of c.citations) {
       const it = items[n - 1]; // 1-indexed candidate numbers
       if (!it) continue; // citation not in retrieved set → drop it
-      citations.push({ artifactId: it.artifactId, externalRef: it.externalRef, title: it.title, type: it.type, url: citationUrl(it) });
+      // A confirmed decision resolves to its detail view (feature 005 US1); other sources use citationUrl.
+      const isDecision = it.source === 'decision';
+      const url = isDecision ? `/decisions/${it.artifactId}` : citationUrl(it);
+      const externalRef = isDecision ? (it.title ?? 'decision') : it.externalRef;
+      citations.push({ artifactId: it.artifactId, externalRef, title: it.title, type: it.type, url });
       citedIso.push(it.lastSyncedAt);
     }
     if (c.text.trim() && citations.length > 0) claims.push({ text: c.text.trim(), citations });

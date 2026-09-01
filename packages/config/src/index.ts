@@ -69,3 +69,16 @@ export function loadEnv<T extends z.ZodTypeAny>(schema: T, source: NodeJS.Proces
 
 export const DEFAULT_FRESHNESS_HORIZON_DAYS = 180;
 export const ROLLING_WINDOW_DAYS = 30;
+
+/**
+ * Decision Memory (feature 005, research.md R1). Maximum cosine DISTANCE (`<=>`, range [0,2];
+ * 0 = identical) at which a decision is considered relevant to a question. Used to (a) decide
+ * whether an UNCONFIRMED candidate is surfaced as answer status metadata (US2), and optionally
+ * (b) guard confirmed decision search against small-corpus false positives.
+ *
+ * PROVISIONAL default — conservative (surface only very close matches). This value MUST be
+ * calibrated on a seeded corpus via `packages/evals/src/decision-ceiling.ts` (task T002) before
+ * US2 ships; it is intentionally strict until then so noise is preferred-absent over
+ * preferred-present. Do not loosen without calibration evidence.
+ */
+export const DECISION_RELEVANCE_MAX_DISTANCE = 0.45;

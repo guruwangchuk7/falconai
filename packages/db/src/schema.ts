@@ -87,6 +87,7 @@ export const decisionRecord = pgTable('decision_record', {
   supersedesId: uuid('supersedes_id'),
   confirmedBy: uuid('confirmed_by'),
   confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  dismissedAt: timestamp('dismissed_at', { withTimezone: true }), // feature 005: dismiss tombstone (orthogonal to status)
   sourceRef: text('source_ref'),
   revisitAt: timestamp('revisit_at', { withTimezone: true }),
   embedding: vector('embedding', { dimensions: 1024 }),

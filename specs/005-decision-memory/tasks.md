@@ -25,14 +25,14 @@ human-in-the-loop, pinned models (§12.8), measure judgments via Langfuse (V).
 **Purpose**: Resolve the one open unknown (research.md R1) BEFORE it's baked into US2. Produces the
 calibrated `DECISION_RELEVANCE_MAX_DISTANCE`; do NOT hardcode blind.
 
-- [ ] T001 Add `@falcon/evals` calibration fixture `packages/evals/src/decision-ceiling.ts`: seed ~25
+- [X] T001 Add `@falcon/evals` calibration fixture `packages/evals/src/decision-ceiling.ts`: seed ~25
   realistic decisions (from this repo's history) + ~15 unrelated; a labeled set of question→expected /
   question→"none" pairs; embed via pinned Voyage; print the nearest-candidate cosine-distance
   distribution and a precision/recall table over positives vs negatives.
 - [ ] T002 Run the fixture (`packages/evals/src/decision-ceiling.ts`), choose the ceiling that yields
   zero false-positive "candidate exists" on negatives while retaining true matches; record the value +
   calibration table in `specs/005-decision-memory/research.md` (R1 result note).
-- [ ] T003 Add the calibrated constant `DECISION_RELEVANCE_MAX_DISTANCE` to `packages/config/src/index.ts`
+- [X] T003 Add the calibrated constant `DECISION_RELEVANCE_MAX_DISTANCE` to `packages/config/src/index.ts`
   (workspace-tunable default; documented as calibrated, not guessed).
 
 **Checkpoint**: The relevance ceiling is a known, justified number wired as config.
@@ -45,13 +45,13 @@ calibrated `DECISION_RELEVANCE_MAX_DISTANCE`; do NOT hardcode blind.
 
 **⚠️ No user-story work starts until this phase is complete.**
 
-- [ ] T004 Create migration `packages/db/drizzle/0004_decision_dismissed_at.sql`:
+- [X] T004 Create migration `packages/db/drizzle/0004_decision_dismissed_at.sql`:
   `ALTER TABLE decision_record ADD COLUMN dismissed_at timestamptz;` (cascades to the 16 hash
   partitions). **Do NOT** alter the `status` CHECK constraint. Optional partial index
   `create index decision_dismissed_idx on decision_record (workspace_id) where dismissed_at is not null;`.
-- [ ] T005 Add `dismissedAt: timestamp('dismissed_at', { withTimezone: true })` to `decisionRecord` in
+- [X] T005 Add `dismissedAt: timestamp('dismissed_at', { withTimezone: true })` to `decisionRecord` in
   `packages/db/src/schema.ts` (depends on T004).
-- [ ] T006 Embed-query-once (research.md R7): add an optional `queryVec?: number[]` param to
+- [X] T006 Embed-query-once (research.md R7): add an optional `queryVec?: number[]` param to
   `retrieve()` in `packages/core/src/retrieve.ts` and `searchDecisions()` in
   `packages/core/src/decisions.ts` — use it when present, else embed internally (preserves existing
   callers). No behavior change for current callers.
@@ -73,36 +73,36 @@ citation. Quickstart Scenario A.
 
 ### Tests for US1 ⚠️ (write first, must fail)
 
-- [ ] T008 [P] [US1] Integration test `packages/core/src/decisions.int.test.ts` (real Postgres, RLS on):
+- [X] T008 [P] [US1] Integration test `packages/core/src/decisions.int.test.ts` (real Postgres, RLS on):
   `createDecision` inserts `unconfirmed` + non-null embedding; not returned by `searchDecisions`;
   `confirmDecision` sets `confirmed` + `confirmed_by`/`confirmed_at` and then IS returned; confirm is
   idempotent. (Mirrors the feature-001 integration harness.)
-- [ ] T009 [P] [US1] e2e `apps/web/e2e/decisions.e2e.spec.ts`: log a decision via `/decisions/new`,
+- [X] T009 [P] [US1] e2e `apps/web/e2e/decisions.e2e.spec.ts`: log a decision via `/decisions/new`,
   confirm from the queue, see it in search + open its detail view.
 
 ### Implementation for US1
 
-- [ ] T010 [US1] Implement `createDecision(deps, workspaceId, input)` in `packages/core/src/decisions.ts`
+- [X] T010 [US1] Implement `createDecision(deps, workspaceId, input)` in `packages/core/src/decisions.ts`
   — insert `status:'unconfirmed'`, embed title+decision at create (pinned Voyage), stamp
   `embedding_model`/`embedding_version`; via `withTenant`. (contracts/core.md)
-- [ ] T011 [US1] Implement `confirmDecision(deps, workspaceId, id, confirmedBy)` in
+- [X] T011 [US1] Implement `confirmDecision(deps, workspaceId, id, confirmedBy)` in
   `packages/core/src/decisions.ts` — unconfirmed→confirmed, stamp confirmer/at, idempotent no-op on
   confirmed/superseded; via `withTenant`.
-- [ ] T012 [US1] Implement `listQueue(deps, workspaceId)` in `packages/core/src/decisions.ts` —
+- [X] T012 [US1] Implement `listQueue(deps, workspaceId)` in `packages/core/src/decisions.ts` —
   `status='unconfirmed' AND dismissed_at IS NULL`, newest first (returns content for the confirm UI).
-- [ ] T013 [US1] Export the new core functions from `packages/core/src/index.ts`.
-- [ ] T014 [US1] Add `POST` to `apps/web/app/api/decisions/route.ts` — validate body, call
+- [X] T013 [US1] Export the new core functions from `packages/core/src/index.ts`.
+- [X] T014 [US1] Add `POST` to `apps/web/app/api/decisions/route.ts` — validate body, call
   `createDecision`, 201 `{id}` / 400 / 401. (contracts/http.md)
-- [ ] T015 [US1] Create `apps/web/app/api/decisions/[id]/route.ts` with `PATCH {action:'confirm'}` →
+- [X] T015 [US1] Create `apps/web/app/api/decisions/[id]/route.ts` with `PATCH {action:'confirm'}` →
   `confirmDecision(id, session.userId)`; 200/404(RLS no-row)/409(illegal).
-- [ ] T016 [P] [US1] Create `apps/web/app/(dashboard)/decisions/new/page.tsx` + `DecisionForm.tsx`
+- [X] T016 [P] [US1] Create `apps/web/app/(dashboard)/decisions/new/page.tsx` + `DecisionForm.tsx`
   (client) posting to `POST /api/decisions`.
-- [ ] T017 [P] [US1] Create `apps/web/app/(dashboard)/decisions/[id]/page.tsx` + `DecisionDetail.tsx`:
+- [X] T017 [P] [US1] Create `apps/web/app/(dashboard)/decisions/[id]/page.tsx` + `DecisionDetail.tsx`:
   decision, rationale, dissent, owner, options, sourceRef, status, confirmer/at, supersede chain,
   freshness flag. This is the citation target (FR-011).
-- [ ] T018 [US1] Extend `apps/web/app/(dashboard)/decisions/page.tsx` — keep search; add an Unconfirmed
+- [X] T018 [US1] Extend `apps/web/app/(dashboard)/decisions/page.tsx` — keep search; add an Unconfirmed
   Queue section (`listQueue`) with per-item Confirm action + a "Log a decision" link.
-- [ ] T019 [US1] Make confirmed-decision citations clickable: in `packages/core/src/answer.ts`
+- [X] T019 [US1] Make confirmed-decision citations clickable: in `packages/core/src/answer.ts`
   `citationUrl`, resolve a `decision`-source item to `/decisions/{artifactId}` (was `null`); render the
   link in `apps/web/app/(dashboard)/falcon/FalconPanel.tsx`.
 
