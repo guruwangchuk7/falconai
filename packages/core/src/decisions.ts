@@ -70,6 +70,7 @@ export async function createDecision(
         dissent: input.dissent ?? null,
         ownerUserId: input.ownerUserId ?? null,
         sourceRef: input.sourceRef ?? null,
+        origin: input.origin ?? 'manual',
         status: 'unconfirmed',
         embedding,
         embeddingModel: EMBEDDING_MODEL,
