@@ -99,8 +99,8 @@ packages/
 │   ├── drizzle/0004_decision_dismissed_at.sql  # NEW migration: ADD COLUMN dismissed_at (+ index)
 │   └── src/schema.ts         # EXTEND: decisionRecord.dismissedAt
 ├── evals/src/                # NEW fixture: decision-ceiling.ts (calibration set + runner)
-├── queue/src/                # Ship 2: enqueue miner jobs on sync
-└── observability/            # log miner judgments + status-resolver fire rate
+├── queue/src/index.ts        # Ship 2: NEW `MineJob` interface + `mineQueue()` (mirrors Sync/Index/Digest)
+└── observability/            # log miner judgments + status-resolver fire rate (Langfuse logGeneration)
 
 apps/
 ├── web/app/(dashboard)/decisions/
@@ -112,7 +112,8 @@ apps/
 │   ├── route.ts              # EXTEND: add POST (create)
 │   └── [id]/route.ts         # NEW: PATCH (confirm | supersede | dismiss)
 ├── web/app/(dashboard)/falcon/FalconPanel.tsx  # EXTEND: render decisionStatus footer + citation links
-└── worker/src/handlers.ts    # Ship 2: miner job handler
+└── worker/src/{handlers.ts,index.ts}  # Ship 2: handleMine() + a new Worker<MineJob> (concurrency-capped);
+                              #   enqueued from the existing sync/index flow. Reuses deps.llm.chat (pinned Haiku).
 ```
 
 **Structure Decision**: Reuse the existing monorepo layout. Business logic (lifecycle, matching,
