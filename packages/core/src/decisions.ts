@@ -37,6 +37,7 @@ export interface QueueItem {
   rationale: string | null;
   options: unknown;
   sourceRef: string | null;
+  origin: string;
   createdAt: string;
 }
 
@@ -70,6 +71,7 @@ export async function createDecision(
         dissent: input.dissent ?? null,
         ownerUserId: input.ownerUserId ?? null,
         sourceRef: input.sourceRef ?? null,
+        origin: input.origin ?? 'manual',
         status: 'unconfirmed',
         embedding,
         embeddingModel: EMBEDDING_MODEL,
@@ -92,6 +94,7 @@ export async function confirmDecision(
   workspaceId: string,
   id: string,
   confirmedBy: string,
+  ownerUserId?: string,
 ): Promise<{ status: 'confirmed' | 'not_found' | 'already_final' | 'missing_decision' }> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const [row] = await tx
@@ -104,7 +107,12 @@ export async function confirmDecision(
     if (!row.decision || row.decision.trim() === '') return { status: 'missing_decision' };
     await tx
       .update(schema.decisionRecord)
-      .set({ status: 'confirmed', confirmedBy, confirmedAt: new Date() })
+      .set({
+        status: 'confirmed',
+        confirmedBy,
+        confirmedAt: new Date(),
+        ...(ownerUserId ? { ownerUserId } : {}),
+      })
       .where(and(eq(schema.decisionRecord.id, id), eq(schema.decisionRecord.status, 'unconfirmed')));
     return { status: 'confirmed' };
   });
@@ -171,6 +179,7 @@ export async function listQueue(deps: CoreDeps, workspaceId: string, limit = 100
         rationale: schema.decisionRecord.rationale,
         options: schema.decisionRecord.options,
         sourceRef: schema.decisionRecord.sourceRef,
+        origin: schema.decisionRecord.origin,
         createdAt: schema.decisionRecord.createdAt,
       })
       .from(schema.decisionRecord)

@@ -34,6 +34,10 @@ export interface RerankProvider {
 }
 
 // ---------- Langfuse (best-effort, non-blocking) ----------
+export function generationName(meta?: Record<string, unknown>): string {
+  return typeof meta?.name === 'string' ? meta.name : 'chat';
+}
+
 async function logGeneration(payload: Record<string, unknown>): Promise<void> {
   const env = loadEnv(llmEnv);
   if (!env.LANGFUSE_PUBLIC_KEY || !env.LANGFUSE_SECRET_KEY) return;
@@ -65,7 +69,7 @@ export class AnthropicChatProvider implements ChatProvider {
     });
     const text = res.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('');
     const usage = { inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens };
-    void logGeneration({ name: 'digest', model: this.model, input: { system: input.system, messages: input.messages, ...input.meta }, output: text, usage: { input: usage.inputTokens, output: usage.outputTokens } });
+    void logGeneration({ name: generationName(input.meta), model: this.model, input: { system: input.system, messages: input.messages, ...input.meta }, output: text, usage: { input: usage.inputTokens, output: usage.outputTokens } });
     return { text, usage };
   }
 }

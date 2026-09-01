@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getDecision } from '@falcon/core';
 import { getActiveSession } from '@/lib/session';
 import { deps } from '@/lib/deps';
+import { ConfirmControl } from './ConfirmControl';
 
 export const runtime = 'nodejs';
 
@@ -55,7 +56,7 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
           </Row>
         )}
         {d.dissent && <Row label="Dissent">{d.dissent}</Row>}
-        {d.ownerUserId && <Row label="Owner">{d.ownerUserId}</Row>}
+        {d.status !== 'unconfirmed' && d.ownerUserId && <Row label="Owner">{d.ownerUserId}</Row>}
         {d.sourceRef && <Row label="Source">{d.sourceRef}</Row>}
         {d.supersedesId && (
           <Row label="Supersedes">
@@ -70,6 +71,8 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
         {d.confirmedAt && <Row label="Confirmed">{new Date(d.confirmedAt).toLocaleString()}{d.confirmedBy ? ` · ${d.confirmedBy}` : ''}</Row>}
         <Row label="Created">{new Date(d.createdAt).toLocaleString()}</Row>
       </div>
+
+      {d.status === 'unconfirmed' && !d.dismissedAt && <ConfirmControl id={d.id} ownerUserId={d.ownerUserId} />}
     </main>
   );
 }

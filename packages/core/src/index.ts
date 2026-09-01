@@ -4,4 +4,6 @@ export * from './retrieve.js';
 export * from './digest.js';
 export * from './decisions.js';
 export * from './decision-status.js';
+export * from './decision-extract.js';
+export * from './decision-mine.js';
 export * from './answer.js';

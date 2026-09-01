@@ -1,10 +1,15 @@
 import { eq } from 'drizzle-orm';
 import { schema } from '@falcon/db';
-import { generateDigest, indexArtifact, upsertArtifact, type CoreDeps } from '@falcon/core';
+import {
+  generateDigest, indexArtifact, upsertArtifact, type CoreDeps,
+  extractDecisions, contentHash, normalizeTitle, getMinedRow, recordMined, isSuppressed,
+  countSuggestionsToday, createDecision, EXTRACTOR_VERSION, shouldMine, type MineResult,
+} from '@falcon/core';
 import type { SecretStore } from '@falcon/secrets';
 import type { ArtifactInput } from '@falcon/integrations';
 import { buildAdapter, type ConnectionRow } from './adapters.js';
-import { digestQueue, indexQueue, syncQueue, defaultJobOpts, type DigestJob, type IndexJob, type SyncJob } from '@falcon/queue';
+import { digestQueue, indexQueue, mineQueue, mineJobId, syncQueue, defaultJobOpts, type DigestJob, type IndexJob, type SyncJob } from '@falcon/queue';
+import { DECISION_MINE_MIN_CONFIDENCE, DECISION_MINE_DAILY_BUDGET } from '@falcon/config';
 
 async function memberLoginMap(deps: CoreDeps, workspaceId: string): Promise<Map<string, string>> {
   const rows = await deps.db.rootDb
@@ -45,6 +50,14 @@ export async function handleSync(deps: CoreDeps, secrets: SecretStore, payload: 
       const userId = (it.ownerExternalId && members.get(it.ownerExternalId)) || conn.userId;
       const artifactId = await deps.db.withTenant(workspaceId, (tx) => upsertArtifact(tx, workspaceId, userId, it));
       await indexQueue().add('index', { workspaceId, artifactId }, defaultJobOpts);
+
+      // Ship 2: enqueue a mine job for freshly merged PRs / completed issues (after the watermark).
+      const mcAt = it.mergedClosedAt ? new Date(it.mergedClosedAt) : null;
+      if (shouldMine({ type: it.type, state: it.state ?? null, mergedClosedAt: mcAt }, conn.mineWatermark ?? null)) {
+        const segs = [{ speaker: null, text: [it.title, it.body].filter(Boolean).join('\n\n') }];
+        const jobId = mineJobId(workspaceId, artifactId, EXTRACTOR_VERSION, contentHash(segs));
+        await mineQueue().add('mine', { workspaceId, artifactId }, { ...defaultJobOpts, jobId });
+      }
       count++;
     }
 
@@ -70,6 +83,71 @@ export async function handleIndex(deps: CoreDeps, payload: IndexJob): Promise<vo
 
 export async function handleDigest(deps: CoreDeps, payload: DigestJob): Promise<void> {
   await generateDigest(deps, payload.workspaceId, payload.userId);
+}
+
+export interface MineOutcome { result: MineResult; decisionIds: string[] }
+
+/**
+ * Ship 2 decision miner orchestration: mine-once ledger gate, daily budget gate, LLM extraction
+ * (error-safe), confidence threshold + suppression, and creation of `origin='suggested'` decision
+ * records. PROVENANCE GATE (security): the created record's `sourceRef` is always the triggering
+ * artifact's `externalRef` — NEVER any `sourceRef` the model may have emitted in its JSON output.
+ */
+export async function handleMine(deps: CoreDeps, payload: { workspaceId: string; artifactId: string }): Promise<MineOutcome> {
+  const { workspaceId, artifactId } = payload;
+  const art = await deps.db.withTenant(workspaceId, async (tx) =>
+    (await tx.select().from(schema.artifact).where(eq(schema.artifact.id, artifactId)).limit(1))[0]);
+  if (!art) return { result: 'no_decision', decisionIds: [] }; // artifact gone
+
+  const segments = [{ speaker: null, text: [art.title, art.body].filter(Boolean).join('\n\n') }];
+  const hash = contentHash(segments);
+
+  // Ledger gate: skip iff a row exists at the current version AND hash (any result).
+  const prior = await getMinedRow(deps, workspaceId, artifactId);
+  if (prior && prior.extractorVersion === EXTRACTOR_VERSION && prior.contentHash === hash) {
+    return { result: prior.result, decisionIds: [] };
+  }
+
+  // Budget gate: over budget → defer (write NOTHING; Task 8 re-enqueues with delay).
+  if (await countSuggestionsToday(deps, workspaceId) >= DECISION_MINE_DAILY_BUDGET) {
+    return { result: 'deferred', decisionIds: [] };
+  }
+
+  // Transient LLM/API errors (network/5xx/429) THROW → propagate out so BullMQ retries (spec §5).
+  // We must NOT write an 'error' ledger row here: that would pin the artifact at this version+hash
+  // and the ledger gate would then permanently skip it, silently dropping the PR's decision forever.
+  // Malformed JSON never reaches here — extractDecisions handles it internally (returns [] after a
+  // re-call). The reserved 'error' MineResult value stays in the union/CHECK constraint, now unused.
+  const candidates = await extractDecisions(deps, { segments, sourceRef: art.externalRef, ownerHint: art.userId });
+
+  const maxScore = candidates.reduce((m, c) => Math.max(m, c.score), 0);
+  const decisionIds: string[] = [];
+  // Within-run dedup: an extraction can return two candidates with the same normalized title;
+  // isSuppressed only sees rows already committed to the DB, so two same-titled candidates in
+  // one run would both pass it (neither is written yet) and create duplicate suggested records.
+  // Track titles created THIS run locally to catch that case too.
+  const createdTitlesThisRun = new Set<string>();
+  for (const c of candidates) {
+    if (c.score < DECISION_MINE_MIN_CONFIDENCE) continue;
+    const norm = normalizeTitle(c.title);
+    if (createdTitlesThisRun.has(norm)) continue;
+    if (await isSuppressed(deps, workspaceId, art.externalRef, norm)) continue;
+    const { id } = await createDecision(deps, workspaceId, {
+      title: c.title, decision: c.decision,
+      ...(c.rationale !== undefined && { rationale: c.rationale }),
+      ...(c.options !== undefined && { options: c.options }),
+      ...(c.dissent !== undefined && { dissent: c.dissent }),
+      ownerUserId: art.userId, sourceRef: art.externalRef, origin: 'suggested', // provenance: artifact ref, NEVER model output
+    });
+    createdTitlesThisRun.add(norm);
+    decisionIds.push(id);
+  }
+  const result: MineResult = decisionIds.length ? 'suggested' : 'no_decision';
+  await recordMined(deps, workspaceId, artifactId, {
+    result, extractorVersion: EXTRACTOR_VERSION, contentHash: hash,
+    decisionId: decisionIds[0] ?? null, maxCandidateScore: maxScore || null,
+  });
+  return { result, decisionIds };
 }
 
 /** Poll scheduler: iterate workspaces (not RLS'd) and enqueue a sync per active connection. */

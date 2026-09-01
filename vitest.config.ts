@@ -17,6 +17,7 @@ export default defineConfig({
       '@falcon/integrations': fileURLToPath(new URL('./packages/integrations/src/index.ts', import.meta.url)),
       '@falcon/stt': fileURLToPath(new URL('./packages/stt/src/index.ts', import.meta.url)),
       '@falcon/session-core': fileURLToPath(new URL('./packages/session-core/src/index.ts', import.meta.url)),
+      '@falcon/evals': fileURLToPath(new URL('./packages/evals/src/index.ts', import.meta.url)),
       // Alias these so vi.mock() can intercept them reliably: under pnpm's symlinked store an
       // un-aliased workspace specifier resolves to a path vi.mock can't match (route tests mock them).
       '@falcon/queue': fileURLToPath(new URL('./packages/queue/src/index.ts', import.meta.url)),

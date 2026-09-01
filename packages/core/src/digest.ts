@@ -27,7 +27,7 @@ export async function generateDigest(deps: CoreDeps, workspaceId: string, userId
       system: DIGEST_SYSTEM,
       messages: [{ role: 'user', content: `Artifacts:\n${context}\n\nWrite the digest.` }],
       maxTokens: 1500,
-      meta: { workspaceId, userId },
+      meta: { name: 'digest', workspaceId, userId },
     });
 
     const model = deps.llm.chat.model;

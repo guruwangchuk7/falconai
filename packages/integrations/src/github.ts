@@ -1,10 +1,10 @@
 import type { Octokit } from 'octokit';
-import { type ArtifactInput, type Cursor, type SourceAdapter, trustFor } from './types.js';
+import { type ArtifactInput, type Cursor, type SourceAdapter, mapPullState, trustFor } from './types.js';
 
 export interface GitHubRepo { owner: string; repo: string }
 
 // Minimal shapes for the fields we read (decoupled from Octokit's heavy generics).
-interface GhPull { number: number; title: string; body: string | null; updated_at: string; user: { login: string } | null }
+interface GhPull { number: number; title: string; body: string | null; updated_at: string; user: { login: string } | null; merged_at: string | null; closed_at: string | null }
 interface GhCommit { sha: string; commit: { message: string; author: { date?: string } | null }; author: { login: string } | null }
 interface GhReviewComment { id: number; body: string; updated_at: string; user: { login: string } | null }
 
@@ -34,6 +34,7 @@ export class GitHubAdapter implements SourceAdapter {
           title: pr.title, body: pr.body ?? null, repoOrProject: slug, aclTags: [slug],
           trustTier: trustFor('pr', login ? this.memberLogins.has(login) : false),
           sourceUpdatedAt: pr.updated_at, ownerExternalId: login,
+          ...mapPullState(pr),
         };
       }
 
@@ -73,6 +74,7 @@ export class GitHubAdapter implements SourceAdapter {
         title: pr.title, body: pr.body ?? null, repoOrProject: slug, aclTags: [slug],
         trustTier: trustFor('pr', login ? this.memberLogins.has(login) : false),
         sourceUpdatedAt: pr.updated_at, ownerExternalId: login,
+        ...mapPullState(pr),
       }];
     }
     return null;

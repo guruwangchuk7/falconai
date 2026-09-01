@@ -12,6 +12,10 @@ export {
   CEILING_DECISIONS, CEILING_DISTRACTORS, CEILING_QUERIES,
   type CeilingRow, type CeilingReport,
 } from './decision-ceiling.js';
+export {
+  scoreHistogram, suggestionsPerWeek, runShadow,
+  type ShadowRecord,
+} from './decision-miner-shadow.js';
 
 /** Embedding models to compare (research D6: settle voyage-code-4 vs voyage-4-large). */
 export const BAKEOFF_MODELS = ['voyage-code-4', 'voyage-4-large'] as const;

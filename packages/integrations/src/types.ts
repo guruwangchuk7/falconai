@@ -14,6 +14,8 @@ export interface ArtifactInput {
   trustTier: TrustTier;           // set at ingestion (F7.2, D9)
   sourceUpdatedAt: string | null; // ISO
   ownerExternalId: string | null; // provider-side author id/login → mapped to a user
+  state?: string | null;          // pr: merged|closed|open ; issue: completed|canceled|started|...
+  mergedClosedAt?: string | null; // ISO of the merge/close/complete event; the mine-watermark comparand
 }
 
 export interface Cursor {
@@ -26,6 +28,13 @@ export interface SourceAdapter {
   listChanged(cursor: Cursor): AsyncIterable<ArtifactInput>;
   /** Parse a verified webhook payload into a delta (signature verification is the caller's job). */
   parseWebhook(payload: unknown): ArtifactInput[] | null;
+}
+
+/** Maps a GitHub-shaped PR's merged/closed timestamps to our provider-neutral state + watermark. */
+export function mapPullState(pr: { merged_at?: string | null; closed_at?: string | null }): { state: string; mergedClosedAt: string | null } {
+  if (pr.merged_at) return { state: 'merged', mergedClosedAt: pr.merged_at };
+  if (pr.closed_at) return { state: 'closed', mergedClosedAt: pr.closed_at };
+  return { state: 'open', mergedClosedAt: null };
 }
 
 /** trust tier heuristic (D9): a workspace member's own authored artifact is trusted; free-text
