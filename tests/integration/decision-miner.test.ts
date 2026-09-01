@@ -1,7 +1,16 @@
 import { it, expect, beforeAll, afterAll } from 'vitest';
 import { createDb, type DbHandle } from '@falcon/db';
 import { EMBEDDING_MODEL, EMBEDDING_VERSION, type LlmProviders } from '@falcon/llm';
-import { createDecision, type CoreDeps } from '@falcon/core';
+import {
+  createDecision,
+  dismissDecision,
+  recordMined,
+  getMinedRow,
+  isSuppressed,
+  countSuggestionsToday,
+  normalizeTitle,
+  type CoreDeps,
+} from '@falcon/core';
 import { startTestDb, type TestDb } from '../support/pg.js';
 
 const A = '00000000-0000-0000-0000-0000000000aa';
@@ -46,4 +55,24 @@ it('createDecision persists origin=suggested', async () => {
   const { id } = await createDecision(deps, A, { title: 'x', decision: 'y', origin: 'suggested', sourceRef: '#9' });
   const row = await tdb.admin`select origin from decision_record where id = ${id}`;
   expect(row[0]!.origin).toBe('suggested');
+});
+
+it('ledger round-trips and dedups on (workspace, artifact)', async () => {
+  const art = '00000000-0000-0000-0000-0000000000f1';
+  await recordMined(deps, A, art, { result: 'no_decision', extractorVersion: 'v1', contentHash: 'h1', maxCandidateScore: 0.4 });
+  const row = await getMinedRow(deps, A, art);
+  expect(row).toEqual({ extractorVersion: 'v1', contentHash: 'h1', result: 'no_decision' });
+});
+
+it('isSuppressed matches an existing record by sourceRef + normalized title (any status incl dismissed)', async () => {
+  const { id } = await createDecision(deps, A, { title: 'Use Postgres.', decision: 'pg', origin: 'suggested', sourceRef: '#77' });
+  await dismissDecision(deps, A, id);
+  expect(await isSuppressed(deps, A, '#77', normalizeTitle('use postgres'))).toBe(true);
+  expect(await isSuppressed(deps, A, '#77', normalizeTitle('totally different'))).toBe(false);
+});
+
+it('countSuggestionsToday counts only today\'s origin=suggested rows', async () => {
+  const before = await countSuggestionsToday(deps, A);
+  await createDecision(deps, A, { title: 'Budget probe', decision: 'z', origin: 'suggested', sourceRef: '#88' });
+  expect(await countSuggestionsToday(deps, A)).toBe(before + 1);
 });
