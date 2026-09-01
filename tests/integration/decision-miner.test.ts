@@ -10,6 +10,7 @@ import {
   countSuggestionsToday,
   normalizeTitle,
   EXTRACTOR_VERSION,
+  listQueue,
   type CoreDeps,
 } from '@falcon/core';
 import { handleMine } from '../../apps/worker/src/handlers.js';
@@ -75,6 +76,13 @@ it('createDecision persists origin=suggested', async () => {
   const { id } = await createDecision(deps, A, { title: 'x', decision: 'y', origin: 'suggested', sourceRef: '#9' });
   const row = await tdb.admin`select origin from decision_record where id = ${id}`;
   expect(row[0]!.origin).toBe('suggested');
+});
+
+it('listQueue exposes origin so the UI can badge suggested items', async () => {
+  await createDecision(deps, A, { title: 'From a PR', decision: 'd', origin: 'suggested', sourceRef: '#123' });
+  const q = await listQueue(deps, A);
+  const item = q.find((i) => i.sourceRef === '#123');
+  expect(item && (item as any).origin).toBe('suggested');
 });
 
 it('ledger round-trips and dedups on (workspace, artifact)', async () => {

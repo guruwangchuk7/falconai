@@ -9,6 +9,7 @@ export interface QueueItemView {
   decision: string | null;
   rationale: string | null;
   sourceRef: string | null;
+  origin: string;
   createdAt: string;
 }
 
@@ -36,7 +37,12 @@ export function QueueList({ items }: { items: QueueItemView[] }) {
       {items.map((it) => (
         <li key={it.id} className="flex items-start justify-between gap-3 py-3">
           <div className="min-w-0">
-            <Link href={`/decisions/${it.id}`} className="text-ink underline decoration-dotted">{it.title}</Link>
+            <div className="flex items-center gap-2">
+              <Link href={`/decisions/${it.id}`} className="text-ink underline decoration-dotted">{it.title}</Link>
+              {it.origin === 'suggested' && it.sourceRef && (
+                <span className="rounded border border-hairline px-1.5 py-0.5 text-xs text-muted">Suggested from {it.sourceRef}</span>
+              )}
+            </div>
             {it.decision && <div className="truncate text-sm text-body">{it.decision}</div>}
             {it.sourceRef && <div className="text-xs text-muted">source: {it.sourceRef}</div>}
           </div>
