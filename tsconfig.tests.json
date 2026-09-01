@@ -11,7 +11,8 @@
       "@falcon/config": ["./packages/config/src/index.ts"],
       "@falcon/integrations": ["./packages/integrations/src/index.ts"],
       "@falcon/stt": ["./packages/stt/src/index.ts"],
-      "@falcon/session-core": ["./packages/session-core/src/index.ts"]
+      "@falcon/session-core": ["./packages/session-core/src/index.ts"],
+      "@falcon/evals": ["./packages/evals/src/index.ts"]
     }
   },
   "include": ["tests"],

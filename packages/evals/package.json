@@ -12,7 +12,8 @@
   "dependencies": {
     "@falcon/core": "workspace:*",
     "@falcon/db": "workspace:*",
-    "@falcon/llm": "workspace:*"
+    "@falcon/llm": "workspace:*",
+    "drizzle-orm": "0.36.4"
   },
   "devDependencies": {
     "@types/node": "24",
