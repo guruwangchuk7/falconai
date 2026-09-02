@@ -102,3 +102,5 @@ export const MEETING_WORKING_COPY_TTL_HOURS = 48;    // durable working-copy TTL
 export const MEETING_REVIEWER_ESCALATION_HOURS = 36; // reviewer inaction → notify all attendees (spec §7)
 export const MEETING_IDLE_GRACE_MS = 120_000;      // reconnect window before idle-disconnect ends a meeting (D8)
 export const MEETING_MAX_SESSION_MS = 4 * 3_600_000; // hard cap so a forgotten-open tab can't run forever (D8)
+export const DECISION_MEETING_DAILY_BUDGET = 20; // reserved meeting suggestion lane/day (D11) — separate from the PR miner's
+export const MEETING_CHUNK_SIZE = 40;            // utterances per extraction chunk (cost lever, §13)

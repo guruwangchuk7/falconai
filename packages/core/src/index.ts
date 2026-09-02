@@ -6,6 +6,7 @@ export * from './decisions.js';
 export * from './decision-status.js';
 export * from './decision-extract.js';
 export * from './decision-mine.js';
+export * from './meeting-ledger.js';
 export * from './answer.js';
 export * from './meeting.js';
 export * from './meeting-extract.js';
