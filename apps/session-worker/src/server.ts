@@ -139,6 +139,7 @@ export function attachSessionWs(app: FastifyInstance, deps: SessionWorkerDeps): 
     const audioBacklog: Uint8Array[] = [];
     let endRequested = false;
     let closedEarly = false;
+    let registered = false;
     ws.on('message', (data, isBinary) => {
       if (isBinary) {
         const frame = new Uint8Array(data as Buffer);
@@ -147,7 +148,7 @@ export function attachSessionWs(app: FastifyInstance, deps: SessionWorkerDeps): 
       }
       try {
         const msg = JSON.parse(data.toString()) as { type?: string };
-        if (msg?.type === 'end_meeting') { endRequested = true; triggerEnd(sessionId, 'explicit'); }
+        if (msg?.type === 'end_meeting') { if (registered) triggerEnd(sessionId, 'explicit'); else endRequested = true; }
       } catch { /* ignore malformed control frames */ }
     });
     const onDisconnect = () => {
@@ -173,6 +174,7 @@ export function attachSessionWs(app: FastifyInstance, deps: SessionWorkerDeps): 
       let lc = lifecycles.get(sessionId);
       if (!lc) { lc = { conns: new Set(), ended: false }; lifecycles.set(sessionId, lc); }
       lc.conns.add(ws);
+      registered = true;
       if (lc.graceTimer) { clearTimeout(lc.graceTimer); delete lc.graceTimer; } // reconnect cancels idle-end
       if (!lc.capTimer) lc.capTimer = setTimeout(() => triggerEnd(sessionId, 'cap'), capMs);
       if (endRequested) triggerEnd(sessionId, 'explicit'); // end_meeting raced ahead of the claim

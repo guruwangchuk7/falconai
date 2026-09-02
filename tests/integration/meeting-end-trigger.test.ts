@@ -80,3 +80,12 @@ it('end_meeting is idempotent (double send fires once)', async () => {
   expect(ended.filter((s) => s === 's-double')).toHaveLength(1);
   ws.close();
 });
+
+it('two connections on one session: end_meeting fires onMeetingEnd exactly once', async () => {
+  const a = await open('s-multi');
+  const b = await open('s-multi');
+  b.ws.send(JSON.stringify({ type: 'end_meeting' }));
+  await sleep(250);
+  expect(ended.filter((s) => s === 's-multi')).toHaveLength(1);
+  a.ws.close(); b.ws.close();
+});
