@@ -1,20 +1,23 @@
 import Link from 'next/link';
-import { searchDecisions, listQueue } from '@falcon/core';
+import { searchDecisions, listQueue, getMeeting } from '@falcon/core';
 import { getActiveSession } from '@/lib/session';
 import { deps } from '@/lib/deps';
 import { QueueList } from './QueueList';
 
 export const runtime = 'nodejs';
 
-export default async function DecisionsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+export default async function DecisionsPage({ searchParams }: { searchParams: Promise<{ q?: string; meetingId?: string }> }) {
   const session = await getActiveSession();
   if (!session) return null;
 
-  const { q } = await searchParams;
-  const [results, queue] = await Promise.all([
-    q ? searchDecisions(deps(), session.workspaceId, q) : Promise.resolve([]),
-    listQueue(deps(), session.workspaceId),
+  const { q, meetingId } = await searchParams;
+  const meetingSourceRef = meetingId ? `meeting:${meetingId}` : undefined;
+  const [results, queue, meeting] = await Promise.all([
+    q ? searchDecisions(deps(), session.workspaceId, q, 10, 180, undefined, session.userId) : Promise.resolve([]),
+    listQueue(deps(), session.workspaceId, 100, meetingSourceRef),
+    meetingId ? getMeeting(deps(), session.workspaceId, meetingId) : Promise.resolve(null),
   ]);
+  const reviewer = meeting?.attendees.find((a) => a.userId === meeting.designatedReviewerUserId)?.displayName ?? null;
 
   return (
     <main>
@@ -22,6 +25,14 @@ export default async function DecisionsPage({ searchParams }: { searchParams: Pr
         <h1 className="text-xl font-medium text-ink">Decision Memory</h1>
         <Link href="/decisions/new" className="rounded bg-ink px-3 py-1.5 text-sm text-white">Log a decision</Link>
       </div>
+
+      {meeting && (
+        <div className="mb-6 rounded border border-hairline bg-hairline/30 p-3 text-sm">
+          <span className="text-ink"><strong>{queue.length}</strong> decision{queue.length === 1 ? '' : 's'} captured from {meeting.title ?? 'a meeting'}</span>
+          {reviewer && <span className="text-muted"> · {reviewer} to review</span>}
+          <Link href="/decisions" className="ml-2 text-xs text-muted underline">show all</Link>
+        </div>
+      )}
 
       <form className="mb-6" action="/decisions" method="get">
         <input

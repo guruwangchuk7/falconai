@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getDecision, getDecisionSpans } from '@falcon/core';
+import { getDecision, getDecisionSpans, getMeeting } from '@falcon/core';
 import { getActiveSession } from '@/lib/session';
 import { deps } from '@/lib/deps';
 import { ConfirmControl } from './ConfirmControl';
@@ -36,6 +36,9 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
     );
   }
 
+  const meetingId = d.sourceRef?.startsWith('meeting:') ? d.sourceRef.slice('meeting:'.length) : null;
+  const meeting = meetingId ? await getMeeting(deps(), session.workspaceId, meetingId) : null;
+
   const spans = await getDecisionSpans(deps(), session.workspaceId, id, session.userId);
   const decisionSpans = spans.filter((s) => s.kind === 'decision');
   const rationaleSpans = spans.filter((s) => s.kind === 'rationale');
@@ -61,7 +64,13 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
         )}
         {d.dissent && <Row label="Dissent">{d.dissent}</Row>}
         {d.status !== 'unconfirmed' && d.ownerUserId && <Row label="Owner">{d.ownerUserId}</Row>}
-        {d.sourceRef && <Row label="Source">{d.sourceRef}</Row>}
+        {d.sourceRef && (
+          <Row label="Source">
+            {meeting
+              ? <Link href={`/decisions?meetingId=${meetingId}`} className="underline">{meeting.title ?? 'Meeting'}{meeting.endedAt ? ` · ${new Date(meeting.endedAt).toLocaleString()}` : ''}</Link>
+              : d.sourceRef}
+          </Row>
+        )}
         {(d.supersedesId || d.supersedesRestricted) && (
           <Row label="Supersedes">
             {d.supersedesRestricted

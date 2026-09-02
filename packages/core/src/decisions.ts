@@ -212,7 +212,7 @@ export async function dismissDecision(deps: CoreDeps, workspaceId: string, id: s
 
 /** List the unconfirmed queue (US1) — awaiting human ratification, excluding dismissed. Newest first,
  *  bounded (review finding #5) so a large backlog can't load unboundedly. */
-export async function listQueue(deps: CoreDeps, workspaceId: string, limit = 100): Promise<QueueItem[]> {
+export async function listQueue(deps: CoreDeps, workspaceId: string, limit = 100, sourceRef?: string): Promise<QueueItem[]> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const rows = await tx
       .select({
@@ -226,7 +226,11 @@ export async function listQueue(deps: CoreDeps, workspaceId: string, limit = 100
         createdAt: schema.decisionRecord.createdAt,
       })
       .from(schema.decisionRecord)
-      .where(and(eq(schema.decisionRecord.status, 'unconfirmed'), isNull(schema.decisionRecord.dismissedAt)))
+      .where(and(
+        eq(schema.decisionRecord.status, 'unconfirmed'),
+        isNull(schema.decisionRecord.dismissedAt),
+        sourceRef ? eq(schema.decisionRecord.sourceRef, sourceRef) : undefined,
+      ))
       .orderBy(desc(schema.decisionRecord.createdAt))
       .limit(limit);
     return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
