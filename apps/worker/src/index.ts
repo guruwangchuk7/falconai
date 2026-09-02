@@ -3,9 +3,9 @@ import { getDb } from '@falcon/db';
 import { createLlmProviders } from '@falcon/llm';
 import { createSecretStore } from '@falcon/secrets';
 import { EXTRACTOR_VERSION, type CoreDeps } from '@falcon/core';
-import { conn, defaultJobOpts, maintenanceQueue, mineQueue, mineJobId, type DigestJob, type IndexJob, type MineJob, type SyncJob } from '@falcon/queue';
+import { conn, defaultJobOpts, maintenanceQueue, meetingExtractQueue, meetingExtractJobId, mineQueue, mineJobId, type DigestJob, type IndexJob, type MeetingExtractJob, type MineJob, type SyncJob } from '@falcon/queue';
 import { captureException, flushObservability, initObservability } from '@falcon/observability';
-import { handleDigest, handleIndex, handleMine, handleSync, pollAll, pollDigests } from './handlers.js';
+import { handleDigest, handleIndex, handleMeetingExtract, handleMine, handleSync, msUntilNextUtcMidnight, pollAll, pollDigests } from './handlers.js';
 
 await initObservability();
 
@@ -18,6 +18,7 @@ const connection = conn();
 // also cap concurrency via INDEX_CONCURRENCY (default 8) to reduce wasted retries.
 const indexConcurrency = Number(process.env.INDEX_CONCURRENCY) || 8;
 const mineConcurrency = Number(process.env.MINE_CONCURRENCY) || 2;
+const meetingExtractConcurrency = Number(process.env.MEETING_EXTRACT_CONCURRENCY) || 2;
 
 const workers = [
   new Worker<SyncJob>('sync', (job) => handleSync(deps, secrets, job.data), { connection, concurrency: 4 }),
@@ -41,6 +42,21 @@ const workers = [
       });
     }
   }, { connection, concurrency: mineConcurrency }),
+  new Worker<MeetingExtractJob>('meeting-extract', async (job) => {
+    const out = await handleMeetingExtract(deps, job.data);
+    if (out.result === 'deferred') {
+      // Over the reserved meeting budget: re-enqueue past the next UTC-midnight reset (well within the
+      // working-copy TTL, so the transcript survives), jittered, at higher priority, deduped per-day.
+      const now = new Date();
+      const untilMidnight = msUntilNextUtcMidnight(now);
+      const jitterMs = Math.floor(Math.random() * 15 * 60_000);
+      const day = new Date(now.getTime() + untilMidnight).toISOString().slice(0, 10);
+      await meetingExtractQueue().add('meeting-extract', job.data, {
+        ...defaultJobOpts, delay: untilMidnight + jitterMs, priority: 1,
+        jobId: `${meetingExtractJobId(job.data.workspaceId, job.data.meetingId)}:defer:${day}`,
+      });
+    }
+  }, { connection, concurrency: meetingExtractConcurrency }),
   new Worker('maintenance', async (job) => {
     if (job.name === 'poll-sync') await pollAll(deps);
     else if (job.name === 'poll-digests') await pollDigests(deps);
@@ -58,7 +74,7 @@ for (const w of workers) {
 await maintenanceQueue().add('poll-sync', {}, { repeat: { pattern: '*/10 * * * *' }, ...defaultJobOpts });
 await maintenanceQueue().add('poll-digests', {}, { repeat: { pattern: '0 3 * * *' }, ...defaultJobOpts });
 
-console.log('falcon worker started: sync, index, digest, mine, maintenance');
+console.log('falcon worker started: sync, index, digest, mine, meeting-extract, maintenance');
 
 async function shutdown() {
   await Promise.all(workers.map((w) => w.close()));

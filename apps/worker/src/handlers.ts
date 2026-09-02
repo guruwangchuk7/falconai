@@ -18,6 +18,12 @@ import {
   DECISION_MEETING_MIN_CONFIDENCE, DECISION_MEETING_DAILY_BUDGET, MEETING_CHUNK_SIZE, MEETING_RATIONALE_PASS_TOP_N,
 } from '@falcon/config';
 
+/** Milliseconds from `now` until the next UTC midnight (when the daily suggestion budget resets).
+ *  Used by the meeting-extract defer re-enqueue. Pure/testable; the jitter is added at the call site. */
+export function msUntilNextUtcMidnight(now: Date): number {
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1) - now.getTime();
+}
+
 async function memberLoginMap(deps: CoreDeps, workspaceId: string): Promise<Map<string, string>> {
   const rows = await deps.db.rootDb
     .select({ login: schema.users.githubLogin, userId: schema.users.id })
