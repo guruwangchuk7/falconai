@@ -90,3 +90,13 @@ export const DECISION_RELEVANCE_MAX_DISTANCE = 0.45;
  */
 export const DECISION_MINE_MIN_CONFIDENCE = 0.75; // suggest-time cutoff on ScoredCandidate.score
 export const DECISION_MINE_DAILY_BUDGET = 10;     // max suggestions/workspace/day (flood guard)
+
+/**
+ * In-Meeting Decision Listener (feature 005 / post-meeting capture). PROVISIONAL — the confidence
+ * cutoff MUST be calibrated on a labeled MEETING corpus (spoken/disfluent input is harder than PRs)
+ * before the listener enforces, mirroring Ship 2's shadow discipline. Strict until then.
+ */
+export const DECISION_MEETING_MIN_CONFIDENCE = 0.75; // suggest-time cutoff on candidate.score
+export const MEETING_RATIONALE_PASS_TOP_N = 3;       // cap the targeted rationale pass (cost lever, spec §13)
+export const MEETING_WORKING_COPY_TTL_HOURS = 48;    // durable working-copy TTL, in [24,72] (D7)
+export const MEETING_REVIEWER_ESCALATION_HOURS = 36; // reviewer inaction → notify all attendees (spec §7)
