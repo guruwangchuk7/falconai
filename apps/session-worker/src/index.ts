@@ -1,6 +1,8 @@
 import { conn } from '@falcon/queue';
 import { createSttProvider } from '@falcon/stt';
+import { getDb } from '@falcon/db';
 import { startSessionWorker } from './server.js';
+import { assembleAndEnqueue } from './meeting-end.js';
 
 /**
  * Falcon session worker entrypoint (Phase 3) — the stateful per-session unit: WebSocket audio ingest
@@ -16,10 +18,18 @@ import { startSessionWorker } from './server.js';
  */
 const PORT = Number(process.env.PORT) || 8787;
 
+const redis = conn();
+const hasDb = !!(process.env.APP_DATABASE_URL || process.env.DATABASE_URL);
+const onMeetingEnd = hasDb
+  ? async (sessionId: string) => { await assembleAndEnqueue({ db: getDb() }, redis, sessionId); }
+  : undefined;
+if (!hasDb) console.log('[falcon] meeting-end capture disabled (no DATABASE_URL/APP_DATABASE_URL)');
+
 const app = startSessionWorker({
-  redis: conn(),
+  redis,
   stt: createSttProvider(),
   workerId: process.env.WORKER_ID ?? `worker-${process.pid}`,
+  ...(onMeetingEnd ? { onMeetingEnd } : {}),
 });
 
 await app.listen({ port: PORT, host: '0.0.0.0' });
