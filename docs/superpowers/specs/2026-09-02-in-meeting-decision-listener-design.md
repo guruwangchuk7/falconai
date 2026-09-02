@@ -68,8 +68,9 @@ we said"* correction, that is the deferred feature under its own name. Verify th
 | D10 | **Two-tier visibility** — `rationale` summary follows the record's visibility tier, verbatim spans are always attendee-gated | Raw speech never leaves the room it was said in (§12.3 + the F9 publish model), while the decision + why is shareable team memory. Same rule PR-sourced records already follow (GitHub link governed by GitHub's ACL). |
 | D11 | Meetings draw from a **reserved, jump-the-queue allocation within the workspace budget pool** — not a second, separate budget | Meetings are low-volume, high-value, time-critical; a heavy sync day must never defer meeting extraction to tomorrow (kills D3). But §12.6 mandates *"one throttle, not two"* — so this is a reserved lane *inside* the pool, not a parallel governance subsystem. |
 | D12 | Decision-visibility = **current workspace membership** (dynamic); span-visibility = **snapshotted attendees** (static) | Partial adoption from day one: workspace-visible memory back-fills to new joiners automatically; raw speech stays with the room forever. |
-| **D13** | **Per-record visibility enum, chosen at confirm: `workspace` (default) \| `attendees-only`** | Closes the "no scoped decision" hole: without it, *every* confirmed decision is company-wide forever — the summary of a sensitive founders' 1:1 reaches employee #21, even though the words were attendee-gated. Protecting the speech while publishing the substance is the inverse of the protection we built, and the reaction isn't "adjust visibility," it's "turn Falcon off for the meetings that matter." Rides the **same** row-level ACL we're already building for spans — a field now, a migration-over-assumed-private-records later. |
+| **D13** | **Per-record visibility tier — an *explicit* selection at confirm (`workspace` pre-selected \| `attendees-only`), at summary-edit prominence; widening is one-way** | Closes the "no scoped decision" hole: without it, *every* confirmed decision is company-wide forever — the summary of a sensitive founders' 1:1 reaches employee #21, even though the words were attendee-gated. Protecting the speech while publishing the substance is the inverse of the protection we built, and the reaction isn't "adjust visibility," it's "turn Falcon off for the meetings that matter." It is an explicit choice, *not* a skippable field, because size doesn't predict sensitivity (a 1:1 is the most routine unit on a small team; the sensitive all-hands exists too). `attendees-only → workspace` is a permitted **one-way** transition — the tier governs a *human-authored summary*, so widening is an ordinary editorial act (unlike widening raw spans, which is why C was rejected); narrowing after people have read it is theater, so it's forbidden. Rides the **same** row-level ACL we build for spans. |
 | **D14** | **Owner attribution is a low-confidence hint** | The speaker of the decision utterance is usually the *facilitator summarizing* ("okay, so Postgres"), not the owner. Set `ownerHint`, but the confirm UI must not present it authoritatively, or we ship systematically-wrong owners that *look* authoritative. |
+| **D15** | **Cross-tier supersede is status-visible, never citable** — a non-attendee querying a `workspace` record superseded by an `attendees-only` one gets *"superseded by a decision you don't have access to,"* not the stale record and not "nothing on record" | Without this, D13 reintroduces R23: Postgres (`workspace`) superseded by a private SQLite (`attendees-only`) → a non-attendee gets either the excluded-stale Postgres or an empty result, breaking the four-state guarantee for exactly the people the tier was meant to protect. Reuses Ship 1's unconfirmed-candidate discipline (status-visible, content-gated) pointed at a new case — a projection-layer rule, not new storage. |
 
 ## 4. Architecture — new seams on existing machinery
 
@@ -208,9 +209,16 @@ populations.**
 2. **Meeting attendees** — who was in a given room. A snapshot. May include non-members.
 3. **Capture subjects** — whose mic was transcribed. **Only ever paired Falcon clients.**
 
-**The record carries a visibility tier chosen at confirm (D13): `workspace` (default) or `attendees-only`.**
-This closes the hole that there is otherwise *no way to record a decision that isn't company-wide* — which
-bites the first time two people have a sensitive conversation with Falcon on, not at scale.
+**The record carries a visibility tier set by an *explicit* selection at confirm (D13): `workspace`
+pre-selected, or `attendees-only`.** Shown at the same prominence as the summary edit — a deliberate
+choice, never a field you skip past. This closes the hole that there is otherwise *no way to record a
+decision that isn't company-wide* — which bites the first time two people have a sensitive conversation
+with Falcon on, not at scale.
+
+**Widening is one-way (D13).** `attendees-only → workspace` is permitted; the reverse is not. The tier
+governs the *human-authored summary*, so widening is an ordinary editorial act — unlike widening raw spans
+(the reason C was rejected). Narrowing after non-attendees have already read a record is theater, so it is
+forbidden.
 
 **Two visibility rules, composed with the tier:**
 - **Decision + `rationale` summary** →
@@ -237,6 +245,15 @@ words enter only as a *member's paraphrase*, which lives in an attendee-gated sp
 from the summary by prompt instruction** — otherwise a summary saying "the client's CTO said security
 would block it" republishes an outsider workspace-wide, just laundered. (Directly executes §12.4: *"Falcon
 must tell users to inform people in the room; the app doesn't announce itself to non-users."*)
+
+**Cross-tier supersede — status-visible, never citable (D15).** The tier interacts with the supersede
+chain, and naively it reintroduces R23: a `workspace` Postgres decision superseded by an `attendees-only`
+SQLite decision leaves a non-attendee with either the excluded-stale Postgres or an empty "nothing on
+record" — the four-state guarantee broken for exactly the people the tier protects. Resolution reuses
+Ship 1's unconfirmed-candidate discipline (status-visible, content-gated): a non-attendee querying the
+superseded `workspace` record gets *"This decision has been superseded by a decision you don't have access
+to"* — the **fact** of the change, **none** of its content, and **never a stale answer**. It is a
+projection-layer rule over existing storage, not a new table.
 
 **Two follow-ons (decided):**
 - **Attendee lists are snapshotted at meeting time** — people leave teams; the room they were in doesn't.
@@ -320,6 +337,11 @@ Row-level ACL is "a new bug class in both directions," so these assertions land 
   read path (queue, detail, answer, history).
 - An attendee who **left the workspace** is excluded from span access.
 - A **new joiner** sees `workspace`-tier decision + summary and history, and **not** spans.
+- **Cross-tier supersede (D15):** a `workspace` record superseded by an `attendees-only` record **never
+  grounds a stale answer** for a non-attendee **and never returns "nothing on record"** — it returns the
+  status-only "superseded by a decision you don't have access to."
+- **Widening is one-way (D13):** `attendees-only → workspace` succeeds; `workspace → attendees-only` is
+  rejected.
 - Tenant floor intact: none of the above weakens §12.9 RLS — cross-tenant reads still return nothing.
 
 **Extraction correctness:**
@@ -349,10 +371,11 @@ Per Ship 2, extraction runs on the pinned Haiku digest tier. A 60-minute meeting
 So **~10–20 LLM calls per meeting-hour**, Haiku-tier. Multiplied by a team's weekly meeting load, this is
 plausibly the **largest per-workspace LLM cost in the product** — larger than the PR miner, which fires
 per-artifact not per-hour. Two levers this model exposes, to be tuned in planning:
-- **Chunk size** trades call-count against orphaned-rationale risk (the rationale pass makes larger chunks
-  safe, pushing this toward *fewer* calls).
-- **Cap the rationale pass to top-N** (already in §5/§4) rather than every candidate — the single biggest
-  cost control, at the price of possibly-thinner rationale on low-confidence records.
+- **Cap the rationale pass to top-N** (already in §5/§4) — the **preferred lever if cost comes in hot**,
+  because N only thins rationale on the *low-confidence candidates you were least sure about anyway*.
+- **Chunk size** trades call-count against orphaned-rationale risk. It is the **worse lever to pull**:
+  chunk size trades directly against *extraction quality*, whereas N trades only against rationale depth on
+  marginal candidates. Reach for smaller N before larger chunks.
 
 A concrete per-meeting-hour dollar figure and the N default are a planning task; the design keeps both as
 tunable knobs rather than baking them in. This feeds the §12.2 COGS envelope and the reserved budget lane
@@ -369,5 +392,8 @@ tunable knobs rather than baking them in. This feeds the §12.2 COGS envelope an
 5. **Session-length cap + grace-window** concrete values.
 6. **Designated-reviewer default** — organizer vs first-decision-owner.
 7. **Cost figures** (§13) — per-meeting-hour estimate + the rationale-pass **N** default.
-8. **Visibility default heuristic (optional)** — should small meetings / 1:1s *hint* `attendees-only` at
-   confirm rather than defaulting `workspace`? Default stays `workspace`; a hint is a possible refinement.
+
+*(A size-based visibility default was considered and rejected: size doesn't predict sensitivity, and
+defaulting small meetings to `attendees-only` would silently poison the §8 back-fill promise — on a
+two-person company every decision is a 1:1, so the entire early corpus would become invisible to
+employee #3. Visibility is an explicit confirm-time choice, `workspace` pre-selected. See D13.)*
