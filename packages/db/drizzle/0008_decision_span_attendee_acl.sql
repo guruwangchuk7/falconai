@@ -11,7 +11,9 @@ create policy decision_span_attendee_read on decision_span as restrictive for se
     and exists (
       select 1
       from decision_record dr
-      cross join lateral jsonb_array_elements(coalesce(dr.participants, '[]'::jsonb)) as p
+      cross join lateral jsonb_array_elements(
+        case when jsonb_typeof(dr.participants) = 'array' then dr.participants else '[]'::jsonb end
+      ) as p
       where dr.id = decision_span.decision_id
         and p->>'userId' = current_setting('app.user_id', true)
     )

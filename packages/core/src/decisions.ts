@@ -4,6 +4,7 @@ import { EMBEDDING_MODEL, EMBEDDING_VERSION } from '@falcon/llm';
 import { DECISION_RELEVANCE_MAX_DISTANCE } from '@falcon/config';
 import type { CoreDeps } from './deps.js';
 import type { UnconfirmedMatch } from './decision-status.js';
+import type { Attendee } from './meeting.js';
 
 export interface DecisionResult {
   id: string;
@@ -37,7 +38,7 @@ export interface CreateDecisionInput {
   sourceRef?: string;
   origin?: 'manual' | 'suggested' | 'meeting';
   visibility?: 'workspace' | 'attendees_only'; // D13 — defaults to 'workspace'
-  participants?: unknown;                       // D12 — attendee snapshot
+  participants?: Attendee[];                    // D12 — attendee snapshot
   spans?: DecisionSpanInput[];                  // D4 — resolved evidence (meeting-sourced)
 }
 

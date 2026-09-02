@@ -44,7 +44,10 @@ afterAll(async () => {
 });
 
 it('persists visibility + participants + decision_span rows in one tx', async () => {
-  const participants = [{ userId: 'u1', displayName: 'Guru' }, { userId: 'u2', displayName: 'Sarah' }];
+  const participants = [
+    { userId: 'u1', displayName: 'Guru', isMember: true, isFalconUser: true },
+    { userId: 'u2', displayName: 'Sarah', isMember: true, isFalconUser: true },
+  ];
   const { id } = await createDecision(deps, WS_A, {
     title: 'Adopt Postgres', decision: 'Use Postgres over SQLite', origin: 'meeting',
     sourceRef: 'meeting:m1', visibility: 'attendees_only', participants,

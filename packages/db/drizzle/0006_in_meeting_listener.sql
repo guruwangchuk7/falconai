@@ -51,7 +51,9 @@ create policy meeting_transcript_tenant_isolation on meeting_transcript
   with check (workspace_id = current_setting('app.workspace_id', true)::uuid);
 
 -- 5) decision spans (D4/D9). The attendee-gated verbatim evidence: resolved text, not indices.
---    RLS here is TENANT-level only; attendee gating is enforced app-side (Phase D) as defense-in-depth.
+--    RLS here is TENANT-level only; attendee gating is enforced DB-side (primary enforcement) via the
+--    RESTRICTIVE decision_span_attendee_read policy added in 0008, which relies on withViewer setting
+--    app.user_id per request.
 create table if not exists decision_span (
   id            uuid not null default gen_random_uuid(),
   workspace_id  uuid not null,
