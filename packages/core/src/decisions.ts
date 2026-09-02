@@ -119,6 +119,7 @@ export async function confirmDecision(
   id: string,
   confirmedBy: string,
   ownerUserId?: string,
+  visibility?: 'workspace' | 'attendees_only',
 ): Promise<{ status: 'confirmed' | 'not_found' | 'already_final' | 'missing_decision' }> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const [row] = await tx
@@ -136,9 +137,27 @@ export async function confirmDecision(
         confirmedBy,
         confirmedAt: new Date(),
         ...(ownerUserId ? { ownerUserId } : {}),
+        ...(visibility ? { visibility } : {}),
       })
       .where(and(eq(schema.decisionRecord.id, id), eq(schema.decisionRecord.status, 'unconfirmed')));
     return { status: 'confirmed' };
+  });
+}
+
+/**
+ * Widen a confirmed record's visibility tier (D13). ONLY attendees_only -> workspace is permitted:
+ * the tier governs the human-authored summary, so widening is an ordinary editorial act, but narrowing
+ * after non-attendees may have read it is theater — and is impossible here by construction (there is no
+ * API that sets attendees_only on a confirmed record; the tier is chosen once at confirm). Idempotent.
+ */
+export async function setVisibility(deps: CoreDeps, workspaceId: string, id: string): Promise<{ status: 'widened' | 'already_workspace' | 'not_found' }> {
+  return deps.db.withTenant(workspaceId, async (tx) => {
+    const [r] = await tx.select({ visibility: schema.decisionRecord.visibility })
+      .from(schema.decisionRecord).where(eq(schema.decisionRecord.id, id)).limit(1);
+    if (!r) return { status: 'not_found' };
+    if (r.visibility === 'workspace') return { status: 'already_workspace' }; // one-way: never narrows
+    await tx.update(schema.decisionRecord).set({ visibility: 'workspace' }).where(eq(schema.decisionRecord.id, id));
+    return { status: 'widened' };
   });
 }
 
