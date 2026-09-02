@@ -40,6 +40,24 @@ const UTTS = [
   { idx: 31, speaker: 'Sarah', userId: 'u2', text: 'okay, postgres then', tsMs: 240000 },
 ];
 
+// Fake LLM whose 'meeting_mine' candidate cites a decision span (999) NOT present in the transcript
+// (idx 5/12/31 only) -> resolveSpans throws SpanIndexError for every candidate -> result='error'.
+function errDeps(dbUrl: string): CoreDeps {
+  return {
+    db: createDb(dbUrl),
+    llm: {
+      chat: {
+        model: 'test',
+        complete: async ({ meta }: any) => {
+          if (meta?.name === 'meeting_rationale') return { text: '{"rationaleSpans":[]}', usage: { inputTokens: 0, outputTokens: 0 } };
+          return { text: '{"candidates":[{"title":"X","decision":"d","decisionSpans":[999],"rationaleSpans":[],"score":0.95}]}', usage: { inputTokens: 0, outputTokens: 0 } };
+        },
+      },
+      embeddings: { model: 'e', embed: async (xs: string[]) => xs.map(() => new Array(1024).fill(0)) },
+    } as unknown as CoreDeps['llm'],
+  };
+}
+
 beforeAll(async () => {
   tdb = await startTestDb();
   deps = fakeDeps(tdb.appUrl);
@@ -92,4 +110,20 @@ it('empty/discarded transcript -> no_decision ledger row, no records', async () 
   expect(out.result).toBe('no_decision');
   expect(out.decisionIds).toHaveLength(0);
   expect((await getMinedMeeting(deps, WS_A, meetingId))!.result).toBe('no_decision');
+});
+
+it('all-out-of-range spans -> result=error, NO record, working copy PRESERVED (re-mine window)', async () => {
+  const errD = errDeps(tdb.appUrl);
+  try {
+    const { meetingId } = await createMeeting(errD, WS_A, { sessionId: randomUUID(), attendees: [] });
+    await persistWorkingCopy(errD, WS_A, meetingId, UTTS, new Date(Date.now() + 48 * 3600_000)); // idx 5/12/31, none = 999
+
+    const out = await handleMeetingExtract(errD, { workspaceId: WS_A, meetingId });
+    expect(out.result).toBe('error');
+    expect(out.decisionIds).toHaveLength(0);
+    expect(await readWorkingCopy(errD, WS_A, meetingId)).not.toBeNull(); // PRESERVED
+    expect((await getMinedMeeting(errD, WS_A, meetingId))!.result).toBe('error');
+  } finally {
+    await errD.db.client.end();
+  }
 });

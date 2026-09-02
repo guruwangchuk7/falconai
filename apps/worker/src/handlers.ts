@@ -228,20 +228,31 @@ export async function handleMeetingExtract(deps: CoreDeps, payload: { workspaceI
     decisionIds.push(id);
   }
 
-  // 8. Retention: on → keep + extend the working copy; off → delete it (spans already persisted).
+  // 8. Compute result BEFORE the retention step so the error branch can decide whether to preserve
+  // the working copy (D6/D7).
+  const result: MineResult = decisionIds.length ? 'suggested' : hadError ? 'error' : 'no_decision';
+
+  // 9. Retention: on → keep + extend the working copy; off → delete it (spans already persisted) —
+  // UNLESS extraction produced a pure error (every candidate hit SpanIndexError: zero decisions,
+  // zero spans persisted). In that case, preserve the transcript for a re-mine recovery window
+  // instead of discarding the irreplaceable meeting with nothing to show for it (D6/D7). Its
+  // existing 24-72h working-copy TTL still bounds it — we're just not proactively deleting.
   const days = await getWorkspaceRetentionDays(deps, workspaceId);
   let retainedUntil: Date | null = null;
   if (days > 0) {
     retainedUntil = new Date(Date.now() + days * 86_400_000);
     await setWorkingCopyExpiry(deps, workspaceId, meetingId, retainedUntil);
     await setTranscriptRetainedUntil(deps, workspaceId, meetingId, retainedUntil);
-  } else {
+  } else if (result !== 'error') {
     await deleteWorkingCopy(deps, workspaceId, meetingId);
+    await setTranscriptRetainedUntil(deps, workspaceId, meetingId, null);
+  } else {
+    // preserve transcript on error for re-mine recovery, D6/D7. Retention is still off — we just
+    // don't proactively delete the working copy.
     await setTranscriptRetainedUntil(deps, workspaceId, meetingId, null);
   }
 
-  // 9. Ledger.
-  const result: MineResult = decisionIds.length ? 'suggested' : hadError ? 'error' : 'no_decision';
+  // 10. Ledger.
   await recordMinedMeeting(deps, workspaceId, meetingId, { result, extractorVersion: MEETING_EXTRACTOR_VERSION, transcriptRetainedUntil: retainedUntil, decisionId: decisionIds[0] ?? null, maxCandidateScore: maxScore || null });
   return { result, decisionIds };
 }
