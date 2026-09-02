@@ -2,6 +2,10 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { schema } from '@falcon/db';
 import type { CoreDeps } from './deps.js';
 
+/** Meeting persistence/assembly only need the DB handle — never the LLM. Narrowing lets the
+ *  session-worker call these without constructing LLM providers (or carrying LLM env it won't use). */
+export type MeetingDeps = { db: CoreDeps['db'] };
+
 /** One finalized utterance in a meeting's working-copy transcript. NO raw audio — text only (R6). */
 export interface Utterance { idx: number; speaker: string | null; userId: string | null; text: string; tsMs: number }
 
@@ -29,7 +33,7 @@ export interface MeetingRow {
 }
 
 /** Create the durable meeting object with its immutable attendee snapshot (D12). Tenant-scoped (RLS). */
-export async function createMeeting(deps: CoreDeps, workspaceId: string, input: CreateMeetingInput): Promise<{ meetingId: string }> {
+export async function createMeeting(deps: MeetingDeps, workspaceId: string, input: CreateMeetingInput): Promise<{ meetingId: string }> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const [row] = await tx.insert(schema.meeting).values({
       workspaceId,
@@ -45,7 +49,7 @@ export async function createMeeting(deps: CoreDeps, workspaceId: string, input: 
 }
 
 /** Persist (or replace) the durable working-copy transcript (D7). Idempotent upsert on (workspace, meeting). */
-export async function persistWorkingCopy(deps: CoreDeps, workspaceId: string, meetingId: string, utterances: Utterance[], expiresAt: Date): Promise<void> {
+export async function persistWorkingCopy(deps: MeetingDeps, workspaceId: string, meetingId: string, utterances: Utterance[], expiresAt: Date): Promise<void> {
   await deps.db.withTenant(workspaceId, async (tx) => {
     await tx.insert(schema.meetingTranscript)
       .values({ workspaceId, meetingId, utterances, expiresAt })
@@ -56,7 +60,7 @@ export async function persistWorkingCopy(deps: CoreDeps, workspaceId: string, me
   });
 }
 
-export async function readWorkingCopy(deps: CoreDeps, workspaceId: string, meetingId: string): Promise<{ utterances: Utterance[] } | null> {
+export async function readWorkingCopy(deps: MeetingDeps, workspaceId: string, meetingId: string): Promise<{ utterances: Utterance[] } | null> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const [row] = await tx.select({ utterances: schema.meetingTranscript.utterances })
       .from(schema.meetingTranscript)
@@ -66,7 +70,7 @@ export async function readWorkingCopy(deps: CoreDeps, workspaceId: string, meeti
   });
 }
 
-export async function deleteWorkingCopy(deps: CoreDeps, workspaceId: string, meetingId: string): Promise<void> {
+export async function deleteWorkingCopy(deps: MeetingDeps, workspaceId: string, meetingId: string): Promise<void> {
   await deps.db.withTenant(workspaceId, async (tx) => {
     await tx.delete(schema.meetingTranscript)
       .where(and(eq(schema.meetingTranscript.workspaceId, workspaceId), eq(schema.meetingTranscript.meetingId, meetingId)));
@@ -74,7 +78,7 @@ export async function deleteWorkingCopy(deps: CoreDeps, workspaceId: string, mee
 }
 
 /** Record whether/until-when the full transcript is retained (D6 ledger-honesty). null = discarded. */
-export async function setTranscriptRetainedUntil(deps: CoreDeps, workspaceId: string, meetingId: string, until: Date | null): Promise<void> {
+export async function setTranscriptRetainedUntil(deps: MeetingDeps, workspaceId: string, meetingId: string, until: Date | null): Promise<void> {
   await deps.db.withTenant(workspaceId, async (tx) => {
     await tx.update(schema.meeting)
       .set({ transcriptRetainedUntil: until })
@@ -92,7 +96,7 @@ function toMeetingRow(r: typeof schema.meeting.$inferSelect): MeetingRow {
   };
 }
 
-export async function getMeeting(deps: CoreDeps, workspaceId: string, meetingId: string): Promise<MeetingRow | null> {
+export async function getMeeting(deps: MeetingDeps, workspaceId: string, meetingId: string): Promise<MeetingRow | null> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const [r] = await tx.select().from(schema.meeting)
       .where(and(eq(schema.meeting.workspaceId, workspaceId), eq(schema.meeting.id, meetingId)))
@@ -103,7 +107,7 @@ export async function getMeeting(deps: CoreDeps, workspaceId: string, meetingId:
 
 /** RLS bootstrap: resolve a session's workspace via the SECURITY DEFINER function (0007). Returns null
  *  for an unknown session. This is the ONLY read that bypasses RLS — everything downstream uses withTenant. */
-export async function resolveSessionWorkspace(deps: CoreDeps, sessionId: string): Promise<string | null> {
+export async function resolveSessionWorkspace(deps: MeetingDeps, sessionId: string): Promise<string | null> {
   const rows = (await deps.db.rootDb.execute(
     sql`select resolve_session_workspace(${sessionId}::uuid) as ws`,
   )) as unknown as Array<{ ws: string | null }>;
@@ -111,7 +115,7 @@ export async function resolveSessionWorkspace(deps: CoreDeps, sessionId: string)
 }
 
 /** Look up a meeting by its originating session (assembly idempotency guard). Newest first. */
-export async function getMeetingBySession(deps: CoreDeps, workspaceId: string, sessionId: string): Promise<MeetingRow | null> {
+export async function getMeetingBySession(deps: MeetingDeps, workspaceId: string, sessionId: string): Promise<MeetingRow | null> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const [r] = await tx.select().from(schema.meeting)
       .where(and(eq(schema.meeting.workspaceId, workspaceId), eq(schema.meeting.sessionId, sessionId)))

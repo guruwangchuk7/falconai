@@ -6,7 +6,7 @@ import { meetingExtractQueue, meetingExtractJobId, defaultJobOpts, type MeetingE
 import { MEETING_WORKING_COPY_TTL_HOURS } from '@falcon/config';
 import {
   resolveSessionWorkspace, getMeetingBySession, createMeeting, persistWorkingCopy,
-  type CoreDeps, type Utterance, type Attendee,
+  type MeetingDeps, type Utterance, type Attendee,
 } from '@falcon/core';
 
 /** Injectable so tests don't need a live BullMQ; production uses the real queue. */
@@ -23,7 +23,7 @@ const defaultEnqueue: EnqueueExtract = async (job, jobId) => {
  * null if the session is unknown. Reads only utterance_final TEXT events; never audio (R6).
  */
 export async function assembleAndEnqueue(
-  deps: CoreDeps, redis: Redis, sessionId: string, enqueue: EnqueueExtract = defaultEnqueue,
+  deps: MeetingDeps, redis: Redis, sessionId: string, enqueue: EnqueueExtract = defaultEnqueue,
 ): Promise<{ meetingId: string } | null> {
   const workspaceId = await resolveSessionWorkspace(deps, sessionId);
   if (!workspaceId) return null;
