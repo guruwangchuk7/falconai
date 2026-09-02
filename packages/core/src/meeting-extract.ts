@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { DIGEST_MODEL } from '@falcon/llm';
 import type { CoreDeps } from './deps.js';
+import type { Utterance } from './meeting.js';
+import { normalizeTitle } from './decision-mine.js';
 
 export interface IndexedUtterance { idx: number; speaker: string | null; text: string }
 
@@ -72,4 +74,51 @@ export async function extractMeetingDecisions(deps: CoreDeps, input: MeetingExtr
   if (parsed === null) parsed = parseCandidates((await call()).text); // one re-call on malformed JSON
   const candidates = parsed ?? [];
   return candidates.map((c) => ({ ...c, ownerHint: input.ownerHint ?? null }));
+}
+
+/** Split utterances into fixed-size chunks. Each utterance carries its global `idx`, so chunk
+ *  boundaries never renumber — a span index means the same utterance regardless of which chunk it fell in. */
+export function chunkUtterances(utterances: IndexedUtterance[], size: number): IndexedUtterance[][] {
+  if (size <= 0) throw new Error('chunk size must be positive');
+  const chunks: IndexedUtterance[][] = [];
+  for (let i = 0; i < utterances.length; i += size) chunks.push(utterances.slice(i, i + size));
+  return chunks;
+}
+
+/** Thrown when a candidate cites an utterance index not present in the transcript (model hallucination).
+ *  Routes to the error path (D9) — never silently dropped-and-kept. */
+export class SpanIndexError extends Error {
+  constructor(message: string) { super(message); this.name = 'SpanIndexError'; }
+}
+
+export interface ResolvedSpan { kind: 'decision' | 'rationale'; utteranceIdx: number; speaker: string | null; tsMs: number; text: string }
+
+/** Resolve a candidate's cited span indices to persisted evidence ({speaker, ts, text}) against the FULL
+ *  transcript. Throws SpanIndexError if any cited index is out of range. The caller drops a candidate with
+ *  no decision spans BEFORE calling this (D9: "no valid decision span -> no candidate"). */
+export function resolveSpans(cand: ScoredMeetingCandidate, byIdx: Map<number, Utterance>): ResolvedSpan[] {
+  const spans: ResolvedSpan[] = [];
+  const groups: Array<['decision' | 'rationale', number[]]> = [['decision', cand.decisionSpans], ['rationale', cand.rationaleSpans]];
+  for (const [kind, idxs] of groups) {
+    for (const i of idxs) {
+      const u = byIdx.get(i);
+      if (!u) throw new SpanIndexError(`span index u${i} not in transcript`);
+      spans.push({ kind, utteranceIdx: i, speaker: u.speaker, tsMs: u.tsMs, text: u.text });
+    }
+  }
+  return spans;
+}
+
+/** Dedup across chunks. PRIMARY: two candidates sharing ANY decision-span index are the same decision
+ *  (deterministic, free — the model titles duplicates differently). FALLBACK: normalized-title match for
+ *  the non-overlapping case. Keeps the higher-scored candidate. */
+export function dedupeBySpanOverlap(cands: ScoredMeetingCandidate[]): ScoredMeetingCandidate[] {
+  const kept: ScoredMeetingCandidate[] = [];
+  for (const c of [...cands].sort((a, b) => b.score - a.score)) {
+    const cSpans = new Set(c.decisionSpans);
+    const cTitle = normalizeTitle(c.title);
+    const dup = kept.some((k) => k.decisionSpans.some((i) => cSpans.has(i)) || normalizeTitle(k.title) === cTitle);
+    if (!dup) kept.push(c);
+  }
+  return kept;
 }
