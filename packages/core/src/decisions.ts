@@ -241,11 +241,19 @@ export async function getDecision(
   deps: CoreDeps,
   workspaceId: string,
   id: string,
+  viewerUserId?: string,
   horizonDays = 180,
 ): Promise<DecisionDetail | null> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const [r] = await tx.select().from(schema.decisionRecord).where(eq(schema.decisionRecord.id, id)).limit(1);
     if (!r) return null;
+    // D13 tier gate: an attendees_only record is invisible to anyone outside its participants
+    // snapshot (SUMMARY tier), even within the same workspace/tenant.
+    if (r.visibility === 'attendees_only') {
+      const isAttendee = !!viewerUserId && Array.isArray(r.participants) &&
+        (r.participants as { userId?: string }[]).some((p) => p?.userId === viewerUserId);
+      if (!isAttendee) return null;
+    }
     let supersedesTitle: string | null = null;
     if (r.supersedesId) {
       const [old] = await tx
@@ -328,7 +336,10 @@ export async function matchUnconfirmedCandidates(
 
 /** F2.4 / F10.1 — Org Decision Index search. ONLY confirmed records are retrievable (FR-012);
  *  superseded is excluded; results past the freshness horizon are flagged. `queryVec` (R7) lets the
- *  caller share one query embedding across retrieval paths. */
+ *  caller share one query embedding across retrieval paths. `viewerUserId` (D13 tier gate) excludes
+ *  `attendees_only` records the viewer isn't a participant of; with no viewer, ALL `attendees_only`
+ *  records are excluded (workspace-tier only) — existing callers that pass no viewer keep their
+ *  current (workspace-tier) behavior unchanged. */
 export async function searchDecisions(
   deps: CoreDeps,
   workspaceId: string,
@@ -336,11 +347,18 @@ export async function searchDecisions(
   k = 10,
   horizonDays = 180,
   queryVec?: number[],
+  viewerUserId?: string,
 ): Promise<DecisionResult[]> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const qvec = queryVec ?? (await deps.llm.embeddings.embed([query], 'query'))[0];
     const vecStr = `[${qvec!.join(',')}]`;
     const dist = sql<number>`${schema.decisionRecord.embedding} <=> ${vecStr}::vector`;
+
+    const tier = viewerUserId
+      ? sql`(${schema.decisionRecord.visibility} = 'workspace' or exists (
+            select 1 from jsonb_array_elements(case when jsonb_typeof(coalesce(${schema.decisionRecord.participants}, '[]'::jsonb)) = 'array' then ${schema.decisionRecord.participants} else '[]'::jsonb end) p
+            where p->>'userId' = ${viewerUserId}))`
+      : sql`${schema.decisionRecord.visibility} = 'workspace'`;
 
     const rows = await tx
       .select({
@@ -352,7 +370,7 @@ export async function searchDecisions(
         score: dist,
       })
       .from(schema.decisionRecord)
-      .where(and(eq(schema.decisionRecord.status, 'confirmed'), sql`${schema.decisionRecord.embedding} is not null`))
+      .where(and(eq(schema.decisionRecord.status, 'confirmed'), sql`${schema.decisionRecord.embedding} is not null`, tier))
       .orderBy(dist)
       .limit(k);
 
@@ -366,5 +384,19 @@ export async function searchDecisions(
       freshnessFlag: r.createdAt.getTime() < horizon,
       score: Number(r.score),
     }));
+  });
+}
+
+export interface DecisionSpanView { kind: string; utteranceIdx: number | null; speaker: string | null; tsMs: number | null; text: string }
+
+/** Read a decision's verbatim spans as a specific viewer. Attendee-gating is enforced by the DB
+ *  (RESTRICTIVE RLS on decision_span, 0008) — a non-attendee simply gets zero rows. MUST use withViewer:
+ *  a withTenant read now fails closed (returns nothing), and a raw/admin read would bypass the gate. */
+export async function getDecisionSpans(deps: CoreDeps, workspaceId: string, decisionId: string, viewerUserId: string): Promise<DecisionSpanView[]> {
+  return deps.db.withViewer(workspaceId, viewerUserId, async (tx) => {
+    return tx.select({
+      kind: schema.decisionSpan.kind, utteranceIdx: schema.decisionSpan.utteranceIdx,
+      speaker: schema.decisionSpan.speaker, tsMs: schema.decisionSpan.tsMs, text: schema.decisionSpan.text,
+    }).from(schema.decisionSpan).where(eq(schema.decisionSpan.decisionId, decisionId)).orderBy(schema.decisionSpan.tsMs);
   });
 }

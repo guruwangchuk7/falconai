@@ -194,7 +194,7 @@ export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promis
   // user's own recent activity ("today"), where org decisions aren't what's being asked.
   const items: RetrievedItem[] = [...artifactItems];
   if (!window.since) {
-    const decisions = await searchDecisions(deps, input.workspaceId, input.question, 4, undefined, queryVec);
+    const decisions = await searchDecisions(deps, input.workspaceId, input.question, 4, undefined, queryVec, input.requesterUserId);
     for (const d of decisions) {
       if (d.supersedesId) supersedingIds.add(d.id); // a settled record that replaced an older one
       items.push({
