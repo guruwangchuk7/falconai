@@ -123,3 +123,20 @@ export async function getMeetingBySession(deps: MeetingDeps, workspaceId: string
     return r ? toMeetingRow(r) : null;
   });
 }
+
+/** Read the workspace's meeting-transcript retention window in days (D6). 0 = retention off. */
+export async function getWorkspaceRetentionDays(deps: MeetingDeps, workspaceId: string): Promise<number> {
+  return deps.db.withTenant(workspaceId, async (tx) => {
+    const [r] = await tx.select({ days: schema.workspace.meetingRetentionDays })
+      .from(schema.workspace).where(eq(schema.workspace.id, workspaceId)).limit(1);
+    return r?.days ?? 0;
+  });
+}
+
+/** Extend the working-copy TTL (retention on → keep the full transcript longer) without rewriting utterances. */
+export async function setWorkingCopyExpiry(deps: MeetingDeps, workspaceId: string, meetingId: string, expiresAt: Date): Promise<void> {
+  await deps.db.withTenant(workspaceId, async (tx) => {
+    await tx.update(schema.meetingTranscript).set({ expiresAt })
+      .where(and(eq(schema.meetingTranscript.workspaceId, workspaceId), eq(schema.meetingTranscript.meetingId, meetingId)));
+  });
+}
