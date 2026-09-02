@@ -15,6 +15,11 @@ const MIGRATION_DISMISSED = resolve(HERE, '../../packages/db/drizzle/0004_decisi
 // the base — like 0004 — so every test DB has it; idempotent `ADD COLUMN IF NOT EXISTS` / `CREATE
 // TABLE IF NOT EXISTS`, so tests that also apply it explicitly still work.
 const MIGRATION_MINER = resolve(HERE, '../../packages/db/drizzle/0005_decision_miner.sql');
+// 0006 (In-Meeting Decision Listener) adds meeting/meeting_transcript/decision_span/mined_meeting
+// (each with its own RLS policy), plus decision_record.visibility/participants and
+// workspace.meeting_retention_days. Applied in the base — like 0004/0005 — so every test DB has it;
+// idempotent `ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS`.
+const MIGRATION_LISTENER = resolve(HERE, '../../packages/db/drizzle/0006_in_meeting_listener.sql');
 
 export interface TestDb {
   container: StartedPostgreSqlContainer;
@@ -42,6 +47,7 @@ export async function startTestDb(): Promise<TestDb> {
   await admin.unsafe(readFileSync(MIGRATION, 'utf8'));
   await admin.unsafe(readFileSync(MIGRATION_DISMISSED, 'utf8'));
   await admin.unsafe(readFileSync(MIGRATION_MINER, 'utf8'));
+  await admin.unsafe(readFileSync(MIGRATION_LISTENER, 'utf8'));
   await admin.unsafe(`
     create role falcon_app login password 'app';
     grant usage on schema public to falcon_app;

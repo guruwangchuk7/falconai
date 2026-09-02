@@ -11,6 +11,7 @@ export const workspace = pgTable('workspace', {
   name: text('name').notNull(),
   settings: jsonb('settings').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  meetingRetentionDays: integer('meeting_retention_days').notNull().default(0), // D6: 0 = off
 });
 
 export const users = pgTable('user', {
@@ -98,6 +99,8 @@ export const decisionRecord = pgTable('decision_record', {
   embeddingVersion: text('embedding_version'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   origin: text('origin').notNull().default('manual'),   // ship 2: manual | mined (queue badges "Suggested from …")
+  visibility: text('visibility').notNull().default('workspace'), // D13: workspace | attendees_only
+  participants: jsonb('participants'),                           // D12: [{ userId, displayName }]
 });
 
 export const workDigest = pgTable('work_digest', {
@@ -135,6 +138,52 @@ export const minedArtifact = pgTable('mined_artifact', {
   decisionId: uuid('decision_id'),
   maxCandidateScore: real('max_candidate_score'),
 }, (t) => ({ pk: primaryKey({ columns: [t.workspaceId, t.artifactId] }) }));
+
+// ---------- In-Meeting Decision Listener (0006_in_meeting_listener.sql) ----------
+
+export const meeting = pgTable('meeting', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),
+  sessionId: uuid('session_id').notNull(),
+  title: text('title'),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  endedAt: timestamp('ended_at', { withTimezone: true }).notNull().defaultNow(),
+  attendees: jsonb('attendees').notNull(),                 // [{ userId, displayName, isMember, isFalconUser }]
+  designatedReviewerUserId: uuid('designated_reviewer_user_id'),
+  transcriptRetainedUntil: timestamp('transcript_retained_until', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ pk: primaryKey({ columns: [t.workspaceId, t.id] }) }));
+
+export const meetingTranscript = pgTable('meeting_transcript', {
+  workspaceId: uuid('workspace_id').notNull(),
+  meetingId: uuid('meeting_id').notNull(),
+  utterances: jsonb('utterances').notNull(),               // [{ idx, speaker, userId, text, tsMs }]
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ pk: primaryKey({ columns: [t.workspaceId, t.meetingId] }) }));
+
+export const decisionSpan = pgTable('decision_span', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),
+  decisionId: uuid('decision_id').notNull(),
+  kind: text('kind').notNull(),                            // decision | rationale
+  speaker: text('speaker'),
+  tsMs: bigint('ts_ms', { mode: 'number' }),
+  utteranceIdx: integer('utterance_idx'),
+  text: text('text').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ pk: primaryKey({ columns: [t.workspaceId, t.id] }) }));
+
+export const minedMeeting = pgTable('mined_meeting', {
+  workspaceId: uuid('workspace_id').notNull(),
+  meetingId: uuid('meeting_id').notNull(),
+  minedAt: timestamp('mined_at', { withTimezone: true }).notNull().defaultNow(),
+  result: text('result').notNull(),                        // suggested | no_decision | error | deferred
+  extractorVersion: text('extractor_version').notNull(),
+  transcriptRetainedUntil: timestamp('transcript_retained_until', { withTimezone: true }),
+  decisionId: uuid('decision_id'),
+  maxCandidateScore: real('max_candidate_score'),
+}, (t) => ({ pk: primaryKey({ columns: [t.workspaceId, t.meetingId] }) }));
 
 // ---------- Phase 2: Personal Falcon (0002_personal_falcon.sql) ----------
 
