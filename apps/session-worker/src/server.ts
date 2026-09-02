@@ -105,8 +105,15 @@ export function attachSessionWs(app: FastifyInstance, deps: SessionWorkerDeps): 
     if (lc.capTimer) clearTimeout(lc.capTimer);
     for (const w of lc.conns) if (w.readyState === 1 /* OPEN */) w.send(JSON.stringify({ type: 'meeting_ended', reason }));
     lifecycles.delete(sessionId);
-    void Promise.resolve(deps.onMeetingEnd?.(sessionId)).catch((err) =>
-      console.error(`[session ${sessionId}] meeting-end failed:`, err instanceof Error ? err.message : err));
+    void (async () => {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try { await deps.onMeetingEnd?.(sessionId); return; }
+        catch (err) {
+          if (attempt === 3) console.error(`[session ${sessionId}] meeting-end failed after 3 attempts:`, err instanceof Error ? err.message : err);
+          else await new Promise((r) => setTimeout(r, 500 * attempt));
+        }
+      }
+    })();
   };
 
   app.server.on('upgrade', (req, socket, head) => {

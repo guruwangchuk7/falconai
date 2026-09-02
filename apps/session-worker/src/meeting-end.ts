@@ -18,9 +18,13 @@ const defaultEnqueue: EnqueueExtract = async (job, jobId) => {
 
 /**
  * At session end: resolve the workspace (RLS bootstrap), then — all tenant-scoped — snapshot attendees,
- * assemble the finalized transcript from the Redis event log into a durable Postgres working copy (D7),
- * and enqueue the (budget-deferrable) meeting-extract job. Idempotent — one meeting per session. Returns
- * null if the session is unknown. Reads only utterance_final TEXT events; never audio (R6).
+ * assemble the finalized transcript from the Redis event log, get-or-create the meeting (unique on
+ * session via 0009), and ALWAYS persist the working copy + enqueue the extract job — on both the new-
+ * and existing-meeting paths. That "always" is deliberate (D7): if a prior invocation crashed or
+ * failed over between create and persist/enqueue, a re-invocation completes the partial meeting instead
+ * of short-circuiting on the existing() check. persistWorkingCopy is an upsert and the extract job uses
+ * a coalescing jobId, so the re-drive is safe. Returns null if the session is unknown. Reads only
+ * utterance_final TEXT events; never audio (R6).
  */
 export async function assembleAndEnqueue(
   deps: MeetingDeps, redis: Redis, sessionId: string, enqueue: EnqueueExtract = defaultEnqueue,
@@ -28,11 +32,8 @@ export async function assembleAndEnqueue(
   const workspaceId = await resolveSessionWorkspace(deps, sessionId);
   if (!workspaceId) return null;
 
-  // Idempotency: createMeeting is not unique on sessionId, so guard here.
-  const existing = await getMeetingBySession(deps, workspaceId, sessionId);
-  if (existing) return { meetingId: existing.id };
-
-  // All tenant-scoped now that we have the workspace: session meta + attendee snapshot (D12).
+  // Assemble attendee snapshot + session meta (ALWAYS — needed to create, and available for a recovery
+  // re-run). All tenant-scoped now that we have the workspace.
   const { sessionKey, startedAt, attendees, nameByUser } = await deps.db.withTenant(workspaceId, async (tx) => {
     const [s] = await tx.select({ sessionKey: schema.session.sessionKey, startedAt: schema.session.startedAt })
       .from(schema.session).where(eq(schema.session.id, sessionId)).limit(1);
@@ -68,10 +69,26 @@ export async function assembleAndEnqueue(
     });
   }
 
-  const { meetingId } = await createMeeting(deps, workspaceId, {
-    sessionId, title: sessionKey, startedAt, endedAt: new Date(),
-    attendees, designatedReviewerUserId: attendees[0]?.userId ?? null, // provisional; Phase E may refine
-  });
+  // Get-or-create the meeting (unique on session via 0009). A create race resolves to the winner.
+  const existing = await getMeetingBySession(deps, workspaceId, sessionId);
+  let meetingId: string;
+  if (existing) {
+    meetingId = existing.id;
+  } else {
+    try {
+      meetingId = (await createMeeting(deps, workspaceId, {
+        sessionId, title: sessionKey, startedAt, endedAt: new Date(),
+        attendees, designatedReviewerUserId: attendees[0]?.userId ?? null,
+      })).meetingId;
+    } catch {
+      const winner = await getMeetingBySession(deps, workspaceId, sessionId); // lost the create race
+      if (!winner) throw new Error(`meeting create failed for session ${sessionId} with no existing row`);
+      meetingId = winner.id;
+    }
+  }
+
+  // ALWAYS ensure the durable working copy + extract job. Both are idempotent (upsert / coalescing jobId),
+  // so a re-invocation after a partial failure COMPLETES the meeting rather than short-circuiting (D7).
   const expiresAt = new Date(Date.now() + MEETING_WORKING_COPY_TTL_HOURS * 3600_000);
   await persistWorkingCopy(deps, workspaceId, meetingId, utterances, expiresAt);
   await enqueue({ workspaceId, meetingId }, meetingExtractJobId(workspaceId, meetingId));

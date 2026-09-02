@@ -32,6 +32,11 @@ const MIGRATION_RESOLVER = resolve(HERE, '../../packages/db/drizzle/0007_session
 // it does not affect the write path. Applied in the base — like 0004/0005/0006/0007 — so every
 // test DB has it.
 const MIGRATION_SPAN_ACL = resolve(HERE, '../../packages/db/drizzle/0008_decision_span_attendee_acl.sql');
+// 0009 (In-Meeting Decision Listener, D7 robustness) adds a unique index on meeting(workspace_id,
+// session_id) — a backstop against a concurrent double-trigger / failover creating two meetings for
+// one session. `meeting` exists in the base test set via 0006, so a plain unique index is safe here.
+// Applied in the base — like 0004/0005/0006/0007/0008 — so every test DB has it.
+const MIGRATION_MEETING_SESSION_UNIQ = resolve(HERE, '../../packages/db/drizzle/0009_meeting_session_unique.sql');
 
 export interface TestDb {
   container: StartedPostgreSqlContainer;
@@ -62,6 +67,7 @@ export async function startTestDb(): Promise<TestDb> {
   await admin.unsafe(readFileSync(MIGRATION_LISTENER, 'utf8'));
   await admin.unsafe(readFileSync(MIGRATION_RESOLVER, 'utf8'));
   await admin.unsafe(readFileSync(MIGRATION_SPAN_ACL, 'utf8'));
+  await admin.unsafe(readFileSync(MIGRATION_MEETING_SESSION_UNIQ, 'utf8'));
   await admin.unsafe(`
     create role falcon_app login password 'app';
     grant usage on schema public to falcon_app;

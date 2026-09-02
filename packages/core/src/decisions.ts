@@ -1,5 +1,5 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { schema } from '@falcon/db';
+import { schema, type TenantTx } from '@falcon/db';
 import { EMBEDDING_MODEL, EMBEDDING_VERSION } from '@falcon/llm';
 import { DECISION_RELEVANCE_MAX_DISTANCE } from '@falcon/config';
 import type { CoreDeps } from './deps.js';
@@ -200,14 +200,33 @@ export async function supersedeDecision(
  * refused. Idempotent.
  */
 export async function dismissDecision(deps: CoreDeps, workspaceId: string, id: string): Promise<{ dismissed: boolean }> {
-  return deps.db.withTenant(workspaceId, async (tx) => {
+  // Read the attendee snapshot first: deleting the (attendee-gated) decision_span rows requires an
+  // attendee viewer context, because 0008's RESTRICTIVE SELECT policy also governs a DELETE's WHERE.
+  const participants = await deps.db.withTenant(workspaceId, async (tx) => {
+    const [r] = await tx.select({ participants: schema.decisionRecord.participants })
+      .from(schema.decisionRecord).where(eq(schema.decisionRecord.id, id)).limit(1);
+    return r?.participants;
+  });
+  const attendeeId = Array.isArray(participants) ? (participants[0] as { userId?: string })?.userId : undefined;
+
+  const run = async (tx: TenantTx) => {
     const res = await tx
       .update(schema.decisionRecord)
       .set({ dismissedAt: new Date() })
       .where(and(eq(schema.decisionRecord.id, id), eq(schema.decisionRecord.status, 'unconfirmed'), isNull(schema.decisionRecord.dismissedAt)))
       .returning({ id: schema.decisionRecord.id });
+    if (res.length > 0) {
+      // D5: dismissing deletes the verbatim spans — tombstone keeps only the normalized title.
+      await tx.delete(schema.decisionSpan).where(eq(schema.decisionSpan.decisionId, id));
+    }
     return { dismissed: res.length > 0 };
-  });
+  };
+
+  // If the record has attendees (meeting-sourced), run under an attendee viewer so the span DELETE
+  // passes the 0008 gate; otherwise a plain tenant context (no spans exist to delete).
+  return attendeeId
+    ? deps.db.withViewer(workspaceId, attendeeId, run)
+    : deps.db.withTenant(workspaceId, run);
 }
 
 /** List the unconfirmed queue (US1) — awaiting human ratification, excluding dismissed. Newest first,

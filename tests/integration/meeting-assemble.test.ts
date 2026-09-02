@@ -104,13 +104,14 @@ it('assembles utterances, snapshots attendees, persists a working copy, enqueues
   expect(enqueued[0]!.jobId).toContain(meetingId);
 });
 
-it('is idempotent: a second call returns the same meeting and does NOT enqueue again', async () => {
+it('is idempotent: a second call returns the same meeting and re-enqueues the SAME coalescing job id', async () => {
   const first = await assembleAndEnqueue(deps, redis, S1, async () => {});
-  const enq: unknown[] = [];
-  const second = await assembleAndEnqueue(deps, redis, S1, async (j) => { enq.push(j); });
+  const enq: Array<{ jobId: string }> = [];
+  const second = await assembleAndEnqueue(deps, redis, S1, async (_j, jobId) => { enq.push({ jobId }); });
   expect(second!.meetingId).toBe(first!.meetingId);
-  expect(enq).toHaveLength(0);
-  expect((await getMeetingBySession(deps, WS_A, S1))!.id).toBe(first!.meetingId);
+  expect(enq).toHaveLength(1);                                  // re-drive (safe: same jobId dedups)
+  expect(enq[0]!.jobId).toContain(first!.meetingId);
+  expect((await getMeetingBySession(deps, WS_A, S1))!.id).toBe(first!.meetingId); // still ONE meeting
 });
 
 it('returns null for an unknown session', async () => {
