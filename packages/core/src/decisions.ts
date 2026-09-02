@@ -228,8 +228,10 @@ export interface DecisionDetail {
   sourceRef: string | null;
   supersedesId: string | null;
   supersedesTitle: string | null;
+  supersedesRestricted: boolean;   // the record THIS supersedes is attendees_only & inaccessible (D15)
   supersededById: string | null; // the record that superseded THIS one (chain, other direction)
   supersededByTitle: string | null;
+  supersededByRestricted: boolean; // the record that superseded THIS one is attendees_only & inaccessible (D15)
   confirmedBy: string | null;
   confirmedAt: string | null;
   dismissedAt: string | null;
@@ -254,21 +256,38 @@ export async function getDecision(
         (r.participants as { userId?: string }[]).some((p) => p?.userId === viewerUserId);
       if (!isAttendee) return null;
     }
+    // D15: an accessible chain neighbor's title may itself be attendees_only and inaccessible to this
+    // viewer — the chain link must project as a restricted FACT, never leak the neighbor's title.
+    const canSee = (visibility: string | null, participants: unknown): boolean =>
+      visibility !== 'attendees_only' ||
+      (!!viewerUserId && Array.isArray(participants) && (participants as { userId?: string }[]).some((p) => p?.userId === viewerUserId));
+
     let supersedesTitle: string | null = null;
+    let supersedesRestricted = false;
     if (r.supersedesId) {
       const [old] = await tx
-        .select({ title: schema.decisionRecord.title })
+        .select({ title: schema.decisionRecord.title, visibility: schema.decisionRecord.visibility, participants: schema.decisionRecord.participants })
         .from(schema.decisionRecord)
         .where(eq(schema.decisionRecord.id, r.supersedesId))
         .limit(1);
-      supersedesTitle = old?.title ?? null;
+      if (old) {
+        if (canSee(old.visibility, old.participants)) supersedesTitle = old.title;
+        else supersedesRestricted = true;
+      }
     }
     // The record that superseded THIS one, if any (chain, forward direction).
     const [successor] = await tx
-      .select({ id: schema.decisionRecord.id, title: schema.decisionRecord.title })
+      .select({ id: schema.decisionRecord.id, title: schema.decisionRecord.title, visibility: schema.decisionRecord.visibility, participants: schema.decisionRecord.participants })
       .from(schema.decisionRecord)
       .where(eq(schema.decisionRecord.supersedesId, r.id))
       .limit(1);
+    let supersededById: string | null = null;
+    let supersededByTitle: string | null = null;
+    let supersededByRestricted = false;
+    if (successor) {
+      if (canSee(successor.visibility, successor.participants)) { supersededById = successor.id; supersededByTitle = successor.title; }
+      else supersededByRestricted = true;
+    }
     const horizon = Date.now() - horizonDays * 86_400_000;
     return {
       id: r.id,
@@ -282,8 +301,10 @@ export async function getDecision(
       sourceRef: r.sourceRef,
       supersedesId: r.supersedesId,
       supersedesTitle,
-      supersededById: successor?.id ?? null,
-      supersededByTitle: successor?.title ?? null,
+      supersedesRestricted,
+      supersededById,
+      supersededByTitle,
+      supersededByRestricted,
       confirmedBy: r.confirmedBy,
       confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
       dismissedAt: r.dismissedAt ? r.dismissedAt.toISOString() : null,
