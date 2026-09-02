@@ -15,6 +15,16 @@ export interface DecisionResult {
   score: number;
 }
 
+/** A resolved evidence span attached to a meeting-sourced decision (D4). Structurally matches C2's
+ *  `ResolvedSpan` — text, not indices, so it survives independent of the (short-lived) transcript. */
+export interface DecisionSpanInput {
+  kind: 'decision' | 'rationale';
+  utteranceIdx: number;
+  speaker: string | null;
+  tsMs: number;
+  text: string;
+}
+
 /** Input for capturing a decision (F10.1). Stored as `unconfirmed`; embedded at CREATE (R2) so it is
  *  matchable while remaining non-grounding until confirmed. */
 export interface CreateDecisionInput {
@@ -25,7 +35,10 @@ export interface CreateDecisionInput {
   dissent?: string;
   ownerUserId?: string;
   sourceRef?: string;
-  origin?: 'manual' | 'suggested';
+  origin?: 'manual' | 'suggested' | 'meeting';
+  visibility?: 'workspace' | 'attendees_only'; // D13 — defaults to 'workspace'
+  participants?: unknown;                       // D12 — attendee snapshot
+  spans?: DecisionSpanInput[];                  // D4 — resolved evidence (meeting-sourced)
 }
 
 /** A row in the unconfirmed queue (content IS shown here — this is the human confirm surface, not an
@@ -76,8 +89,18 @@ export async function createDecision(
         embedding,
         embeddingModel: EMBEDDING_MODEL,
         embeddingVersion: EMBEDDING_VERSION,
+        visibility: input.visibility ?? 'workspace',
+        participants: input.participants ?? null,
       })
       .returning({ id: schema.decisionRecord.id });
+    if (input.spans && input.spans.length > 0) {
+      await tx.insert(schema.decisionSpan).values(
+        input.spans.map((s) => ({
+          workspaceId, decisionId: row!.id, kind: s.kind,
+          speaker: s.speaker, tsMs: s.tsMs, utteranceIdx: s.utteranceIdx, text: s.text,
+        })),
+      );
+    }
     return { id: row!.id };
   });
 }
