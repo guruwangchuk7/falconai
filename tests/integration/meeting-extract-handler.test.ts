@@ -84,8 +84,10 @@ it('extracts a meeting decision with spans, records ledger=suggested, deletes wo
   expect(rec!.visibility).toBe('workspace');
   expect(rec!.status).toBe('unconfirmed'); // never auto-confirms (R23)
 
-  const spans = await deps.db.withTenant(WS_A, async (tx) =>
-    tx.select().from(schema.decisionSpan).where(eq(schema.decisionSpan.decisionId, out.decisionIds[0]!)));
+  // Read as superuser (tdb.admin) — bypasses RLS. This only checks span persistence count, not
+  // attendee-ACL semantics (0008's RESTRICTIVE policy means a plain withTenant span read now
+  // returns zero rows; see decision-span-acl.test.ts for the security battery).
+  const spans = await tdb.admin`select * from decision_span where decision_id = ${out.decisionIds[0]!}`;
   // decision [31] + rationale [12] + rationale-pass [5]
   expect(spans.length).toBeGreaterThanOrEqual(3);
 

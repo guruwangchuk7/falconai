@@ -61,11 +61,12 @@ it('persists visibility + participants + decision_span rows in one tx', async ()
   expect(rec!.origin).toBe('meeting');
   expect((rec!.participants as any[])).toHaveLength(2);
 
-  // Span rows.
-  const spans = await deps.db.withTenant(WS_A, async (tx) =>
-    tx.select().from(schema.decisionSpan).where(eq(schema.decisionSpan.decisionId, id)));
+  // Span rows. Read as superuser (tdb.admin) — bypasses RLS. This assertion only cares that the
+  // rows were persisted, not attendee-ACL semantics (that's the D1 security battery's job, and the
+  // 0008 RESTRICTIVE policy means a plain withTenant span read now returns zero rows).
+  const spans = await tdb.admin`select * from decision_span where decision_id = ${id}`;
   expect(spans).toHaveLength(2);
-  expect(spans.find((s) => s.kind === 'decision')!.utteranceIdx).toBe(31);
+  expect(spans.find((s) => s.kind === 'decision')!.utterance_idx).toBe(31);
   expect(spans.find((s) => s.kind === 'rationale')!.text).toContain('concurrency');
 });
 
@@ -74,7 +75,6 @@ it('defaults visibility to workspace and writes no spans when none given (back-c
   const rec = await deps.db.withTenant(WS_A, async (tx) =>
     (await tx.select().from(schema.decisionRecord).where(eq(schema.decisionRecord.id, id)).limit(1))[0]);
   expect(rec!.visibility).toBe('workspace');
-  const spans = await deps.db.withTenant(WS_A, async (tx) =>
-    tx.select().from(schema.decisionSpan).where(eq(schema.decisionSpan.decisionId, id)));
+  const spans = await tdb.admin`select * from decision_span where decision_id = ${id}`;
   expect(spans).toHaveLength(0);
 });

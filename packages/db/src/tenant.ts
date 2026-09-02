@@ -10,6 +10,7 @@ export interface DbHandle {
   client: Sql;
   rootDb: Db;
   withTenant<T>(workspaceId: string, fn: (tx: TenantTx) => Promise<T>): Promise<T>;
+  withViewer<T>(workspaceId: string, userId: string, fn: (tx: TenantTx) => Promise<T>): Promise<T>;
 }
 
 /**
@@ -46,7 +47,27 @@ export function createDb(url: string): DbHandle {
     });
   }
 
-  return { client, rootDb, withTenant };
+  /**
+   * Like `withTenant`, but ALSO sets `app.user_id` and asserts BOTH settings stuck before running
+   * `fn`. This is the sanctioned path for attendee-gated reads (decision_span, per D1/§9.3/§12.3):
+   * the 0008 RESTRICTIVE policy on decision_span requires `app.user_id` to be set, so a plain
+   * `withTenant` read fails closed (zero rows) — every attendee-gated span read MUST go through
+   * `withViewer`.
+   */
+  async function withViewer<T>(workspaceId: string, userId: string, fn: (tx: TenantTx) => Promise<T>): Promise<T> {
+    return rootDb.transaction(async (tx) => {
+      await tx.execute(sql`select set_config('app.workspace_id', ${workspaceId}, true), set_config('app.user_id', ${userId}, true)`);
+      const rows = (await tx.execute(
+        sql`select current_setting('app.workspace_id', true) as ws, current_setting('app.user_id', true) as uid`,
+      )) as unknown as Array<{ ws: string | null; uid: string | null }>;
+      if (rows[0]?.ws !== workspaceId || rows[0]?.uid !== userId) {
+        throw new Error('Viewer context was not set for this transaction — refusing to run a gated query.');
+      }
+      return fn(tx);
+    });
+  }
+
+  return { client, rootDb, withTenant, withViewer };
 }
 
 let _default: DbHandle | undefined;

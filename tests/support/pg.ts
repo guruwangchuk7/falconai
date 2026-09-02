@@ -26,6 +26,12 @@ const MIGRATION_LISTENER = resolve(HERE, '../../packages/db/drizzle/0006_in_meet
 // CREATE FUNCTION time — safe to apply here, before 0003 (which creates `session`) even exists in
 // this base. Applied in the base — like 0004/0005/0006 — so every test DB has it.
 const MIGRATION_RESOLVER = resolve(HERE, '../../packages/db/drizzle/0007_session_workspace_resolver.sql');
+// 0008 (In-Meeting Decision Listener, Task D1) adds the RESTRICTIVE attendee-gate policy on
+// decision_span (ANDs with 0006's tenant policy): a SELECT returns a span only if app.user_id is
+// set AND that user is in the parent decision_record's participants snapshot. FOR SELECT only, so
+// it does not affect the write path. Applied in the base — like 0004/0005/0006/0007 — so every
+// test DB has it.
+const MIGRATION_SPAN_ACL = resolve(HERE, '../../packages/db/drizzle/0008_decision_span_attendee_acl.sql');
 
 export interface TestDb {
   container: StartedPostgreSqlContainer;
@@ -55,6 +61,7 @@ export async function startTestDb(): Promise<TestDb> {
   await admin.unsafe(readFileSync(MIGRATION_MINER, 'utf8'));
   await admin.unsafe(readFileSync(MIGRATION_LISTENER, 'utf8'));
   await admin.unsafe(readFileSync(MIGRATION_RESOLVER, 'utf8'));
+  await admin.unsafe(readFileSync(MIGRATION_SPAN_ACL, 'utf8'));
   await admin.unsafe(`
     create role falcon_app login password 'app';
     grant usage on schema public to falcon_app;
