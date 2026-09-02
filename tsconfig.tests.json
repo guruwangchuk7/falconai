@@ -9,6 +9,7 @@
       "@falcon/core": ["./packages/core/src/index.ts"],
       "@falcon/llm": ["./packages/llm/src/index.ts"],
       "@falcon/config": ["./packages/config/src/index.ts"],
+      "@falcon/queue": ["./packages/queue/src/index.ts"],
       "@falcon/integrations": ["./packages/integrations/src/index.ts"],
       "@falcon/stt": ["./packages/stt/src/index.ts"],
       "@falcon/session-core": ["./packages/session-core/src/index.ts"],
