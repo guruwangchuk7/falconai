@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { schema } from '@falcon/db';
 import type { CoreDeps } from './deps.js';
 
@@ -82,18 +82,40 @@ export async function setTranscriptRetainedUntil(deps: CoreDeps, workspaceId: st
   });
 }
 
+function toMeetingRow(r: typeof schema.meeting.$inferSelect): MeetingRow {
+  return {
+    id: r.id, sessionId: r.sessionId, title: r.title,
+    startedAt: r.startedAt, endedAt: r.endedAt,
+    attendees: (r.attendees as Attendee[]) ?? [],
+    designatedReviewerUserId: r.designatedReviewerUserId,
+    transcriptRetainedUntil: r.transcriptRetainedUntil,
+  };
+}
+
 export async function getMeeting(deps: CoreDeps, workspaceId: string, meetingId: string): Promise<MeetingRow | null> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const [r] = await tx.select().from(schema.meeting)
       .where(and(eq(schema.meeting.workspaceId, workspaceId), eq(schema.meeting.id, meetingId)))
       .limit(1);
-    if (!r) return null;
-    return {
-      id: r.id, sessionId: r.sessionId, title: r.title,
-      startedAt: r.startedAt, endedAt: r.endedAt,
-      attendees: (r.attendees as Attendee[]) ?? [],
-      designatedReviewerUserId: r.designatedReviewerUserId,
-      transcriptRetainedUntil: r.transcriptRetainedUntil,
-    };
+    return r ? toMeetingRow(r) : null;
+  });
+}
+
+/** RLS bootstrap: resolve a session's workspace via the SECURITY DEFINER function (0007). Returns null
+ *  for an unknown session. This is the ONLY read that bypasses RLS — everything downstream uses withTenant. */
+export async function resolveSessionWorkspace(deps: CoreDeps, sessionId: string): Promise<string | null> {
+  const rows = (await deps.db.rootDb.execute(
+    sql`select resolve_session_workspace(${sessionId}::uuid) as ws`,
+  )) as unknown as Array<{ ws: string | null }>;
+  return rows[0]?.ws ?? null;
+}
+
+/** Look up a meeting by its originating session (assembly idempotency guard). Newest first. */
+export async function getMeetingBySession(deps: CoreDeps, workspaceId: string, sessionId: string): Promise<MeetingRow | null> {
+  return deps.db.withTenant(workspaceId, async (tx) => {
+    const [r] = await tx.select().from(schema.meeting)
+      .where(and(eq(schema.meeting.workspaceId, workspaceId), eq(schema.meeting.sessionId, sessionId)))
+      .orderBy(desc(schema.meeting.createdAt)).limit(1);
+    return r ? toMeetingRow(r) : null;
   });
 }

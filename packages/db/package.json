@@ -5,7 +5,7 @@
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "scripts": {
-    "migrate": "psql \"$DATABASE_URL\" -f drizzle/0001_init.sql -f drizzle/0002_personal_falcon.sql -f drizzle/0003_pairing.sql -f drizzle/0004_decision_dismissed_at.sql -f drizzle/0005_decision_miner.sql -f drizzle/0006_in_meeting_listener.sql",
+    "migrate": "psql \"$DATABASE_URL\" -f drizzle/0001_init.sql -f drizzle/0002_personal_falcon.sql -f drizzle/0003_pairing.sql -f drizzle/0004_decision_dismissed_at.sql -f drizzle/0005_decision_miner.sql -f drizzle/0006_in_meeting_listener.sql -f drizzle/0007_session_workspace_resolver.sql",
     "seed": "tsx src/seed.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

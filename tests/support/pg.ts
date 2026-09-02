@@ -20,6 +20,12 @@ const MIGRATION_MINER = resolve(HERE, '../../packages/db/drizzle/0005_decision_m
 // workspace.meeting_retention_days. Applied in the base — like 0004/0005 — so every test DB has it;
 // idempotent `ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS`.
 const MIGRATION_LISTENER = resolve(HERE, '../../packages/db/drizzle/0006_in_meeting_listener.sql');
+// 0007 (In-Meeting Decision Listener, Task B3) adds the SECURITY DEFINER session->workspace
+// resolver the session-worker uses to bootstrap its tenant context before `session` is readable
+// under RLS. Its body is `plpgsql` (not `sql`), so it is NOT validated against the catalog at
+// CREATE FUNCTION time — safe to apply here, before 0003 (which creates `session`) even exists in
+// this base. Applied in the base — like 0004/0005/0006 — so every test DB has it.
+const MIGRATION_RESOLVER = resolve(HERE, '../../packages/db/drizzle/0007_session_workspace_resolver.sql');
 
 export interface TestDb {
   container: StartedPostgreSqlContainer;
@@ -48,6 +54,7 @@ export async function startTestDb(): Promise<TestDb> {
   await admin.unsafe(readFileSync(MIGRATION_DISMISSED, 'utf8'));
   await admin.unsafe(readFileSync(MIGRATION_MINER, 'utf8'));
   await admin.unsafe(readFileSync(MIGRATION_LISTENER, 'utf8'));
+  await admin.unsafe(readFileSync(MIGRATION_RESOLVER, 'utf8'));
   await admin.unsafe(`
     create role falcon_app login password 'app';
     grant usage on schema public to falcon_app;
