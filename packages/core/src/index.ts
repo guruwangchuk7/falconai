@@ -8,3 +8,4 @@ export * from './decision-extract.js';
 export * from './decision-mine.js';
 export * from './answer.js';
 export * from './meeting.js';
+export * from './meeting-extract.js';
