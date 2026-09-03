@@ -24,6 +24,24 @@ it('parses candidates WITH decision/rationale span indices', async () => {
   expect(out[0]!.score).toBeCloseTo(0.9);
 });
 
+// Regression (found in the live feel-pass, 2026-09-03): Haiku 4.5 wraps its reply in a ```json code
+// fence despite "reply with ONLY JSON", which made a bare JSON.parse throw → every live meeting
+// extraction silently returned []. The parser must slice the JSON object out of fenced/prose replies.
+it('parses candidates wrapped in a ```json markdown code fence', async () => {
+  const fenced = '```json\n{"candidates":[{"title":"Use Postgres","decision":"Adopt Postgres over SQLite","decisionSpans":[31],"rationaleSpans":[12],"score":0.95}]}\n```';
+  const out = await extractMeetingDecisions(depsWith(fenced), input);
+  expect(out).toHaveLength(1);
+  expect(out[0]!.decisionSpans).toEqual([31]);
+  expect(out[0]!.score).toBeCloseTo(0.95);
+});
+
+it('parses candidates when the model adds surrounding prose', async () => {
+  const chatty = 'Here is the decision I found:\n{"candidates":[{"title":"T","decision":"d","score":0.8}]}\nHope that helps!';
+  const out = await extractMeetingDecisions(depsWith(chatty), input);
+  expect(out).toHaveLength(1);
+  expect(out[0]!.title).toBe('T');
+});
+
 it('defaults missing span arrays to [] and coerces to integers', async () => {
   const deps = depsWith('{"candidates":[{"title":"T","decision":"d","score":0.8}]}');
   const out = await extractMeetingDecisions(deps, input);

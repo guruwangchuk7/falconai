@@ -40,9 +40,22 @@ function toIntArray(v: unknown): number[] {
   return v.map((x) => (typeof x === 'number' ? Math.trunc(x) : NaN)).filter((n) => Number.isInteger(n));
 }
 
+/** Extract the JSON object from a model reply, tolerating markdown code fences / surrounding prose.
+ *  Models (e.g. Haiku 4.5) frequently wrap replies in ```json … ``` despite "reply with ONLY JSON",
+ *  which would make a bare JSON.parse throw. Slice from the first '{' to the last '}' — same approach
+ *  as answer.ts. Returns null if no braces are present. */
+function sliceJsonObject(text: string): string | null {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  return text.slice(start, end + 1);
+}
+
 function parseCandidates(text: string): ScoredMeetingCandidate[] | null {
+  const json = sliceJsonObject(text);
+  if (json === null) return null;
   let raw: unknown;
-  try { raw = JSON.parse(text); } catch { return null; }
+  try { raw = JSON.parse(json); } catch { return null; }
   const list = (raw as { candidates?: unknown })?.candidates;
   if (!Array.isArray(list)) return null;
   const out: ScoredMeetingCandidate[] = [];
@@ -131,8 +144,10 @@ export async function rationalePass(
   try {
     text = (await deps.llm.chat.complete({ system: RATIONALE_PROMPT, messages: [{ role: 'user', content: user }], maxTokens: 300, meta: { name: 'meeting_rationale', sourceRef } })).text;
   } catch { return []; }
+  const json = sliceJsonObject(text);
+  if (json === null) return [];
   let raw: unknown;
-  try { raw = JSON.parse(text); } catch { return []; }
+  try { raw = JSON.parse(json); } catch { return []; }
   return toIntArray((raw as { rationaleSpans?: unknown })?.rationaleSpans).filter((i) => valid.has(i));
 }
 
