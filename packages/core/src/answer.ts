@@ -126,6 +126,32 @@ export function groundClaims(
   return { claims, citedIso };
 }
 
+/** How many top-ranked artifacts the omission diff inspects (F7.2 shadow). */
+export const OMISSION_SHADOW_TOP_N = 3;
+
+export interface OmittedArtifact { artifactId: string; title: string | null; trustTier: string; rank: number }
+
+/**
+ * F7.2 omission diff (SHADOW / log-only). Provenance-gating (groundClaims) catches a FABRICATED citation
+ * — a claim citing an artifact that wasn't retrieved. It does NOT catch OMISSION: a poisoned/adversarial
+ * artifact that SUPPRESSES a true citation (the agent grounds on something weaker and silently drops a
+ * higher-relevance retrieved artifact). The retrieved set and the cited set are both already in memory, so
+ * diff them: flag top-N retrieved ARTIFACTS (decisions are trusted, excluded) that no surviving claim
+ * cited. Pure + tested. Enforcement (blocking) is Phase-4; Phase-2 ships this in shadow (log, block nothing)
+ * to build a benign-traffic baseline — the build-first item the eng review flagged (A3). Returns [] when
+ * every top-N artifact was cited.
+ */
+export function computeOmissionDiff(artifactItems: RetrievedItem[], citedArtifactIds: Set<string>, topN = OMISSION_SHADOW_TOP_N): OmittedArtifact[] {
+  const omitted: OmittedArtifact[] = [];
+  for (let i = 0; i < Math.min(topN, artifactItems.length); i++) {
+    const it = artifactItems[i]!;
+    if (!citedArtifactIds.has(it.artifactId)) {
+      omitted.push({ artifactId: it.artifactId, title: it.title, trustTier: it.trustTier, rank: i + 1 });
+    }
+  }
+  return omitted;
+}
+
 /**
  * Parse a natural-language time window from the question so "today / yesterday / this week / last
  * month" actually constrain retrieval by date (not just semantics). Pure + deterministic (takes
@@ -230,6 +256,19 @@ export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promis
   // 3. Verify-then-drop (pure, tested): keep only claims whose citations map to retrieved candidates.
   const { claims, citedIso } = groundClaims(parsed, items);
   if (claims.length === 0) return noAnswer(degraded); // nothing survived verification
+
+  // F7.2 omission diff (SHADOW / log-only, blocks nothing): did the grounded answer skip a top-ranked
+  // retrieved artifact? A high-relevance artifact left uncited can signal an injection that SUPPRESSES a
+  // true citation — the case provenance-gating structurally can't see. Log a benign-traffic baseline now;
+  // enforcement is Phase-4. Emitted as a greppable structured line the prod log drain forwards to Sentry.
+  const citedArtifactIds = new Set(claims.flatMap((c) => c.citations.map((ci) => ci.artifactId)));
+  const omitted = computeOmissionDiff(artifactItems, citedArtifactIds);
+  if (omitted.length > 0) {
+    console.warn('[f7.2-omission-shadow] ' + JSON.stringify({
+      workspaceId: input.workspaceId, userId: input.requesterUserId,
+      citedCount: citedArtifactIds.size, omitted,
+    }));
+  }
 
   const dataAsOf = citedIso.sort().at(-1) ?? null; // latest sync among cited artifacts
   const decisionStatus = decisionStatusFor(claims);

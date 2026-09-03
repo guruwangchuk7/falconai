@@ -18,7 +18,9 @@
 | Unconfirmed-candidate surfacing carries no content | design §8 | `matchUnconfirmedCandidates` returns metadata only (`decision-status.ts`). Test: `decision-memory.test.ts` | ✅ |
 | One-way visibility widening (never narrows) | D13 | `setVisibility` widen-only, idempotent. Test: `decision-visibility-set.test.ts` | ✅ |
 | Only **confirmed** records retrievable / ground answers | F10.1 / R23 | `status='confirmed'` filter in `searchDecisions`/answer. Test: `decision-memory.test.ts` | ✅ |
-| Provenance-gated output — claim → ACL-checked artifact | F7.2 / R4 / R20 | Phase-1 `retrieve()` ACL check; unverifiable dropped. Test/gate: `acl.test.ts` + CI SC-004 | ✅ |
+| Provenance-gated output — claim → ACL-checked artifact (FABRICATION direction) | F7.2 / R4 / R20 | Phase-1 `retrieve()` ACL check; `groundClaims` verify-then-drop (cited→retrieved). Test/gate: `acl.test.ts`, `answer.test.ts` + CI SC-004 | ✅ |
+| F7.2 **omission diff** — flag a high-relevance retrieved artifact the answer DROPPED (SUPPRESSION direction; provenance-gating can't see this) | F7.2 (eng review A3, "build first") | `computeOmissionDiff` + shadow log `[f7.2-omission-shadow]` in `answerQuestion` (`packages/core/src/answer.ts`). Test: `tests/unit/omission-diff.test.ts` | ✅ **SHADOW/log-only (this commit); was an UNTRACKED gap found in the 2026-09-03 conformance audit.** Blocking enforcement is ⬜ Phase-4 |
+| A8 `audit_log` / `failover_event` tables | `prd-eng-review` A8 (DECIDED) | eval-set satisfied (`packages/evals`, `calibrate.ts`); the two tables are not in any migration | ⬜ **Phase-4-deferred** (F9.1a redaction audit / Coordinator failover) — now tracked, was decided-but-implicit |
 | PR-mined decision **text** carries a visibility tier | §21 item 12 | `origin='suggested'` records land `workspace`; no tier | 🟡 documented, not built (GitHub ACL governs the *evidence*, not the decision text) |
 | Multi-workspace mis-attribution guard | §21 item 13 | — (RLS authorizes a legitimate member; can't catch a wrong-workspace pairing) | ⬜ open item |
 | Publish-time ACL intersection on shared cards | F9.1a / R15 | — | ⬜ Phase 4 |
@@ -27,5 +29,6 @@
 
 ## Notes
 - The ⬜ Phase-4 rows are not gaps — they gate features not yet built; listed so a reader doesn't mistake "designed" for "enforced."
-- The two 🟡→✅ transitions (`c346839`) came out of this sweep: the pre-confirmation queue leak and the missing TTL reaper.
+- The two 🟡→✅ transitions (`c346839`) came out of the first sweep: the pre-confirmation queue leak and the missing TTL reaper.
+- **Update (2026-09-03 conformance audit):** the audit found one untracked silent divergence — the **F7.2 omission diff** was mandated (eng review A3, "build first, shadow mode") but never built and never surfaced. Now shipped in shadow/log-only mode + tracked (row above). The **A8** audit/failover tables were "decided" but implicit; now tracked as Phase-4-deferred. Rest of the audit: strong conformance, no other untracked divergences (the shipped surface enforces its non-negotiables in code + tests + CI).
 - Re-run the enforcing tests (`pnpm exec vitest run tests/integration/... --pool-options.forks.singleFork`) to re-verify any ✅ against a later commit.
