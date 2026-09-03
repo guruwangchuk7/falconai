@@ -3,6 +3,7 @@ import { DIGEST_MODEL } from '@falcon/llm';
 import type { CoreDeps } from './deps.js';
 import type { Utterance } from './meeting.js';
 import { normalizeTitle } from './decision-mine.js';
+import { sliceJsonObject } from './json.js';
 
 export interface IndexedUtterance { idx: number; speaker: string | null; text: string }
 
@@ -38,17 +39,6 @@ function renderIndexed(utterances: IndexedUtterance[]): string {
 function toIntArray(v: unknown): number[] {
   if (!Array.isArray(v)) return [];
   return v.map((x) => (typeof x === 'number' ? Math.trunc(x) : NaN)).filter((n) => Number.isInteger(n));
-}
-
-/** Extract the JSON object from a model reply, tolerating markdown code fences / surrounding prose.
- *  Models (e.g. Haiku 4.5) frequently wrap replies in ```json … ``` despite "reply with ONLY JSON",
- *  which would make a bare JSON.parse throw. Slice from the first '{' to the last '}' — same approach
- *  as answer.ts. Returns null if no braces are present. */
-function sliceJsonObject(text: string): string | null {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start < 0 || end <= start) return null;
-  return text.slice(start, end + 1);
 }
 
 function parseCandidates(text: string): ScoredMeetingCandidate[] | null {

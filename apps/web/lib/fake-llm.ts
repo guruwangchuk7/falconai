@@ -7,9 +7,13 @@ import { EMBEDDING_DIM, EMBEDDING_MODEL, EMBEDDING_VERSION, type LlmProviders } 
  * verify-then-drop grounding gate rather than bypassing it. Embeddings are a constant vector so a
  * chunk seeded with the same vector is always retrieved (cosine distance 0).
  */
-const GROUNDED_ANSWER = JSON.stringify({
+// Wrapped in a ```json code fence ON PURPOSE. The real model (Haiku 4.5) does this despite being told
+// to reply with only JSON, which is exactly what silently zeroed out live extraction on 2026-09-03 while
+// 108 raw-JSON-emitting fakes stayed green. A test double must not be better-behaved than the thing it
+// doubles — emitting fenced output means the offline/e2e path exercises the real fence-tolerant parse.
+const GROUNDED_ANSWER = '```json\n' + JSON.stringify({
   claims: [{ text: 'You implemented the GitHub auth callback.', citations: [1] }],
-});
+}) + '\n```';
 
 export function fakeLlmProviders(): LlmProviders {
   const constantVector = () => new Array<number>(EMBEDDING_DIM).fill(0.1);

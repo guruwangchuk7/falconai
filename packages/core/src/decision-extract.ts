@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { DIGEST_MODEL } from '@falcon/llm';
 import type { CoreDeps } from './deps.js';
+import { sliceJsonObject } from './json.js';
 
 export interface DecisionSegment { speaker: string | null; text: string }
 export interface ExtractInput { segments: DecisionSegment[]; sourceRef: string; ownerHint?: string | null }
@@ -29,8 +30,10 @@ function renderSegments(segments: DecisionSegment[]): string {
 }
 
 function parseCandidates(text: string): ScoredCandidate[] | null {
+  const json = sliceJsonObject(text); // tolerate ```json fences / prose — same class of bug as meeting-extract
+  if (json === null) return null;
   let raw: unknown;
-  try { raw = JSON.parse(text); } catch { return null; }
+  try { raw = JSON.parse(json); } catch { return null; }
   const list = (raw as { candidates?: unknown })?.candidates;
   if (!Array.isArray(list)) return null;
   const out: ScoredCandidate[] = [];

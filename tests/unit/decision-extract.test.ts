@@ -36,6 +36,15 @@ describe('extractDecisions', () => {
     expect(await extractDecisions(deps, seg('x'))).toEqual([]);
   });
 
+  it('parses a candidate wrapped in a ```json code fence (real-model behavior)', async () => {
+    // Regression for the same class as the meeting extractor: Haiku fences its JSON, and a bare
+    // JSON.parse would drop every candidate silently. The fake now fences by default; this pins it.
+    const deps = depsWith('```json\n{"candidates":[{"title":"Adopt SQL","decision":"Use Postgres","score":0.9}]}\n```');
+    const out = await extractDecisions(deps, seg('We decided to use Postgres over Mongo.'));
+    expect(out).toHaveLength(1);
+    expect(out[0]!.decision).toBe('Use Postgres');
+  });
+
   it('drops candidates missing a decision string (defensive)', async () => {
     const deps = depsWith('{"candidates":[{"title":"no decision field","score":0.9}]}');
     expect(await extractDecisions(deps, seg('x'))).toEqual([]);
