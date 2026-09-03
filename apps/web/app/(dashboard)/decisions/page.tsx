@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { searchDecisions, listQueue, getMeeting } from '@falcon/core';
+import { searchDecisions, listQueue, listConfirmed, getMeeting } from '@falcon/core';
 import { getActiveSession } from '@/lib/session';
 import { deps } from '@/lib/deps';
 import { QueueList } from './QueueList';
@@ -13,10 +13,14 @@ export default async function DecisionsPage({ searchParams }: { searchParams: Pr
 
   const { q, meetingId } = await searchParams;
   const meetingSourceRef = meetingId ? `meeting:${meetingId}` : undefined;
-  const [results, queue, meeting] = await Promise.all([
+  // Browse the confirmed Decision Memory only in the default view (not while searching or scoped to a
+  // meeting) — searching already surfaces confirmed matches, and the meeting view is queue-scoped.
+  const showConfirmed = !q && !meetingId;
+  const [results, queue, meeting, confirmed] = await Promise.all([
     q ? searchDecisions(deps(), session.workspaceId, q, 10, 180, undefined, session.userId) : Promise.resolve([]),
     listQueue(deps(), session.workspaceId, 100, meetingSourceRef),
     meetingId ? getMeeting(deps(), session.workspaceId, meetingId) : Promise.resolve(null),
+    showConfirmed ? listConfirmed(deps(), session.workspaceId, 100, session.userId) : Promise.resolve([]),
   ]);
   const reviewer = meeting?.attendees.find((a) => a.userId === meeting.designatedReviewerUserId)?.displayName ?? null;
 
@@ -68,6 +72,30 @@ export default async function DecisionsPage({ searchParams }: { searchParams: Pr
         <h2 className="mb-2 text-sm font-medium text-muted">Awaiting confirmation ({queue.length})</h2>
         <QueueList items={queue} />
       </section>
+
+      {showConfirmed && (
+        <section className="mt-8">
+          <h2 className="mb-2 text-sm font-medium text-muted">Confirmed decisions ({confirmed.length})</h2>
+          {confirmed.length === 0 ? (
+            <p className="text-sm text-muted">No confirmed decisions yet — confirm one above to add it to Decision Memory.</p>
+          ) : (
+            <ul className="divide-y divide-hairline">
+              {confirmed.map((c) => (
+                <li key={c.id} className="py-3">
+                  <div className="flex items-center gap-2">
+                    <Link href={`/decisions/${c.id}`} className="text-ink underline decoration-dotted">{c.title}</Link>
+                    {c.sourceRef?.startsWith('meeting:') && (
+                      <span className="rounded border border-hairline px-1.5 py-0.5 text-xs text-muted">from meeting</span>
+                    )}
+                  </div>
+                  {c.decision && <div className="truncate text-sm text-body">{c.decision}</div>}
+                  {c.confirmedAt && <div className="text-xs text-muted">confirmed {new Date(c.confirmedAt).toLocaleString()}</div>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
     </main>
   );
 }

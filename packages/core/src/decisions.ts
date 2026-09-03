@@ -256,6 +256,46 @@ export async function listQueue(deps: CoreDeps, workspaceId: string, limit = 100
   });
 }
 
+/** A confirmed decision as shown in the browsable Decision Memory list. */
+export interface ConfirmedItem {
+  id: string;
+  title: string;
+  decision: string | null;
+  sourceRef: string | null;
+  origin: string;
+  confirmedAt: string | null;
+}
+
+/**
+ * Browse the org's confirmed Decision Memory (the read side of the confirm gate, F10.1). Confirmed
+ * only — never unconfirmed (not yet ratified) or superseded (replaced). Applies the SAME visibility
+ * tier as searchDecisions: `attendees_only` records surface only to a viewer in the participants
+ * snapshot (D13); without a viewer, only `workspace`-tier records. Newest confirmations first.
+ */
+export async function listConfirmed(deps: CoreDeps, workspaceId: string, limit = 100, viewerUserId?: string): Promise<ConfirmedItem[]> {
+  return deps.db.withTenant(workspaceId, async (tx) => {
+    const tier = viewerUserId
+      ? sql`(${schema.decisionRecord.visibility} = 'workspace' or exists (
+            select 1 from jsonb_array_elements(case when jsonb_typeof(coalesce(${schema.decisionRecord.participants}, '[]'::jsonb)) = 'array' then ${schema.decisionRecord.participants} else '[]'::jsonb end) p
+            where p->>'userId' = ${viewerUserId}))`
+      : sql`${schema.decisionRecord.visibility} = 'workspace'`;
+    const rows = await tx
+      .select({
+        id: schema.decisionRecord.id,
+        title: schema.decisionRecord.title,
+        decision: schema.decisionRecord.decision,
+        sourceRef: schema.decisionRecord.sourceRef,
+        origin: schema.decisionRecord.origin,
+        confirmedAt: schema.decisionRecord.confirmedAt,
+      })
+      .from(schema.decisionRecord)
+      .where(and(eq(schema.decisionRecord.status, 'confirmed'), tier))
+      .orderBy(desc(schema.decisionRecord.confirmedAt))
+      .limit(limit);
+    return rows.map((r) => ({ ...r, confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null }));
+  });
+}
+
 /** Full decision record for the detail view / citation target (US1). Includes the title of the
  *  record this one supersedes, when any (the supersede chain is completed in US3). */
 export interface DecisionDetail {
