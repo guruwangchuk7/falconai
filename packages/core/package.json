@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc --noEmit" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "calibrate": "tsx --env-file=../../.env src/calibrate-cli.ts"
+  },
   "dependencies": {
     "@falcon/config": "workspace:*",
     "@falcon/db": "workspace:*",
@@ -14,6 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "24",
+    "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }
 }
