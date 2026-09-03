@@ -36,7 +36,10 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
     );
   }
 
-  const meetingId = d.sourceRef?.startsWith('meeting:') ? d.sourceRef.slice('meeting:'.length) : null;
+  const isMeeting = d.origin === 'meeting';
+  // sourceRef is only the pointer used to fetch the meeting; whether this IS a meeting decision is the
+  // typed `origin`, so the visibility chooser + guard can't drift with a sourceRef string convention.
+  const meetingId = isMeeting && d.sourceRef?.startsWith('meeting:') ? d.sourceRef.slice('meeting:'.length) : null;
   const meeting = meetingId ? await getMeeting(deps(), session.workspaceId, meetingId) : null;
 
   const spans = await getDecisionSpans(deps(), session.workspaceId, id, session.userId);
@@ -115,7 +118,7 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
         <ConfirmControl
           id={d.id}
           ownerUserId={d.ownerUserId}
-          isMeeting={d.sourceRef?.startsWith('meeting:') ?? false}
+          isMeeting={isMeeting}
           hasExternalAttendee={meeting?.attendees.some((a) => !a.isMember) ?? false}
         />
       )}

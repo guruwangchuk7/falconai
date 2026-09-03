@@ -123,7 +123,7 @@ export async function confirmDecision(
 ): Promise<{ status: 'confirmed' | 'not_found' | 'already_final' | 'missing_decision' | 'visibility_required' }> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const [row] = await tx
-      .select({ status: schema.decisionRecord.status, decision: schema.decisionRecord.decision, dismissedAt: schema.decisionRecord.dismissedAt, sourceRef: schema.decisionRecord.sourceRef })
+      .select({ status: schema.decisionRecord.status, decision: schema.decisionRecord.decision, dismissedAt: schema.decisionRecord.dismissedAt, origin: schema.decisionRecord.origin })
       .from(schema.decisionRecord)
       .where(eq(schema.decisionRecord.id, id))
       .limit(1);
@@ -132,8 +132,9 @@ export async function confirmDecision(
     if (!row.decision || row.decision.trim() === '') return { status: 'missing_decision' };
     // D13 (refined): a MEETING decision must carry an EXPLICIT visibility choice at confirm — the write
     // gate refuses a silent default so a client-confidential decision can never be filed workspace-wide
-    // just because a reviewer didn't pick. Non-meeting records have no tier and are unaffected.
-    if (row.sourceRef?.startsWith('meeting:') && !visibility) return { status: 'visibility_required' };
+    // just because a reviewer didn't pick. Predicate on the typed `origin` column, NOT a sourceRef
+    // string-prefix: a security gate must not hinge on a free-text convention that can silently drift.
+    if (row.origin === 'meeting' && !visibility) return { status: 'visibility_required' };
     await tx
       .update(schema.decisionRecord)
       .set({
@@ -311,6 +312,7 @@ export interface DecisionDetail {
   options: unknown;
   ownerUserId: string | null;
   status: string;
+  origin: string;
   sourceRef: string | null;
   supersedesId: string | null;
   supersedesTitle: string | null;
@@ -384,6 +386,7 @@ export async function getDecision(
       options: r.options,
       ownerUserId: r.ownerUserId,
       status: r.status,
+      origin: r.origin,
       sourceRef: r.sourceRef,
       supersedesId: r.supersedesId,
       supersedesTitle,
