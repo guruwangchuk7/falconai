@@ -3,6 +3,7 @@ import { searchDecisions, listQueue, getMeeting } from '@falcon/core';
 import { getActiveSession } from '@/lib/session';
 import { deps } from '@/lib/deps';
 import { QueueList } from './QueueList';
+import { AutoRefresh } from './AutoRefresh';
 
 export const runtime = 'nodejs';
 
@@ -21,6 +22,7 @@ export default async function DecisionsPage({ searchParams }: { searchParams: Pr
 
   return (
     <main>
+      <AutoRefresh />
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-medium text-ink">Decision Memory</h1>
         <Link href="/decisions/new" className="rounded bg-ink px-3 py-1.5 text-sm text-white">Log a decision</Link>
