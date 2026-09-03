@@ -120,16 +120,20 @@ export async function confirmDecision(
   confirmedBy: string,
   ownerUserId?: string,
   visibility?: 'workspace' | 'attendees_only',
-): Promise<{ status: 'confirmed' | 'not_found' | 'already_final' | 'missing_decision' }> {
+): Promise<{ status: 'confirmed' | 'not_found' | 'already_final' | 'missing_decision' | 'visibility_required' }> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const [row] = await tx
-      .select({ status: schema.decisionRecord.status, decision: schema.decisionRecord.decision, dismissedAt: schema.decisionRecord.dismissedAt })
+      .select({ status: schema.decisionRecord.status, decision: schema.decisionRecord.decision, dismissedAt: schema.decisionRecord.dismissedAt, sourceRef: schema.decisionRecord.sourceRef })
       .from(schema.decisionRecord)
       .where(eq(schema.decisionRecord.id, id))
       .limit(1);
     if (!row) return { status: 'not_found' }; // absent, or another tenant's record (RLS hides it)
     if (row.dismissedAt || row.status !== 'unconfirmed') return { status: 'already_final' }; // confirmed/superseded/dismissed
     if (!row.decision || row.decision.trim() === '') return { status: 'missing_decision' };
+    // D13 (refined): a MEETING decision must carry an EXPLICIT visibility choice at confirm — the write
+    // gate refuses a silent default so a client-confidential decision can never be filed workspace-wide
+    // just because a reviewer didn't pick. Non-meeting records have no tier and are unaffected.
+    if (row.sourceRef?.startsWith('meeting:') && !visibility) return { status: 'visibility_required' };
     await tx
       .update(schema.decisionRecord)
       .set({

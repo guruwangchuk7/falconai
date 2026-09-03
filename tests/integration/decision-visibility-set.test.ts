@@ -64,8 +64,23 @@ it('setVisibility widens attendees_only -> workspace (one-way), then is a no-op'
 
 it('setVisibility on a workspace record is already_workspace (cannot narrow)', async () => {
   const id = await seedUnconfirmed('Public');
-  await confirmDecision(deps, WS_A, id, REVIEWER); // defaults to workspace
+  await confirmDecision(deps, WS_A, id, REVIEWER, undefined, 'workspace'); // D13: explicit visibility
   expect((await setVisibility(deps, WS_A, id)).status).toBe('already_workspace');
+});
+
+it('D13: confirming a MEETING decision without an explicit visibility is refused (no silent default)', async () => {
+  const id = await seedUnconfirmed('NeedsChoice');
+  // no visibility arg → the write gate refuses rather than silently filing it workspace-wide
+  expect((await confirmDecision(deps, WS_A, id, REVIEWER)).status).toBe('visibility_required');
+  // it stays unconfirmed — nothing was written
+  expect((await getDecision(deps, WS_A, id, REVIEWER))!.status).toBe('unconfirmed');
+  // an explicit choice confirms it
+  expect((await confirmDecision(deps, WS_A, id, REVIEWER, undefined, 'attendees_only')).status).toBe('confirmed');
+});
+
+it('a NON-meeting decision confirms without a visibility choice (no tier applies)', async () => {
+  const { id } = await createDecision(deps, WS_A, { title: 'Manual', decision: 'manual d', sourceRef: '#42' });
+  expect((await confirmDecision(deps, WS_A, id, REVIEWER)).status).toBe('confirmed');
 });
 
 it('setVisibility on a missing id returns not_found', async () => {

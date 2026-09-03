@@ -392,8 +392,29 @@ tunable knobs rather than baking them in. This feeds the §12.2 COGS envelope an
 5. **Session-length cap + grace-window** concrete values.
 6. **Designated-reviewer default** — organizer vs first-decision-owner.
 7. **Cost figures** (§13) — per-meeting-hour estimate + the rationale-pass **N** default.
+8. **Client vs. internal decisions in one Decision Memory** *(added 2026-09-03)* — one flat, workspace-
+   visible list mixes client-confidential decisions with internal ones. Two distinct problems:
+   *confidentiality* (who may read — the visibility tier) and *context bleed* (client decisions as noise
+   in retrieval for those who can see them — NOT solved by visibility; needs grouping). Mitigation now:
+   the required, explicit confirm-time visibility choice (D13, refined below) enforced at the write gate.
+   Deferred: engagement "spaces"/grouping — shape unknown until real usage; confirm whether client work
+   is even in the pilot. Full write-up: **PRD §21 item 12**.
+9. **The multi-workspace user & cross-workspace meetings** *(added 2026-09-03)* — a `session` carries one
+   `workspace_id` chosen at pairing; a multi-workspace user (own company + N clients) can have a meeting
+   filed under the wrong org, and RLS does NOT guard it (the write is legitimately authorized, just
+   mis-attributed). Needs a host rule (session belongs to the starter's workspace; others are guests
+   captured into the host org, no cross-posting), an explicit workspace pick at session start (no
+   "last used" default), a "Recording into: <workspace>" capture indicator, and the selection stored on
+   the meeting. Open fork: may a guest whose workspace differs be captured at all? Full write-up:
+   **PRD §21 item 13**.
 
 *(A size-based visibility default was considered and rejected: size doesn't predict sensitivity, and
 defaulting small meetings to `attendees-only` would silently poison the §8 back-fill promise — on a
 two-person company every decision is a 1:1, so the entire early corpus would become invisible to
-employee #3. Visibility is an explicit confirm-time choice, `workspace` pre-selected. See D13.)*
+employee #3. Visibility is an explicit confirm-time choice. **D13 refinement (2026-09-03):** the choice
+is the ACTION — two confirm buttons, `[Confirm for team]` / `[Confirm — attendees only]`, with NO
+pre-selected default a reviewer can scroll past, and the write gate refuses a meeting confirm that
+carries no explicit visibility (`visibility_required`). The earlier "`workspace` pre-selected" default
+was the fragile pattern that silently files a client decision workspace-wide; an external-attendee
+signal now only pre-emphasizes attendees-only + shows a banner, never a silent default — detection
+misses the solo-on-a-client-call case, so it can only ever suggest. See PRD §21 item 12.)*

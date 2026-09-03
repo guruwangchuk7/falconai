@@ -51,7 +51,7 @@ afterAll(async () => {
 
 async function mk(visibility: 'workspace' | 'attendees_only', title: string) {
   const { id } = await createDecision(deps, WS_A, { title, decision: `${title} d`, origin: 'meeting', sourceRef: `meeting:${title}`, visibility, participants: attendees });
-  await confirmDecision(deps, WS_A, id, ATTENDEE);
+  await confirmDecision(deps, WS_A, id, ATTENDEE, undefined, visibility); // D13: meeting confirm requires an explicit visibility
   return id;
 }
 

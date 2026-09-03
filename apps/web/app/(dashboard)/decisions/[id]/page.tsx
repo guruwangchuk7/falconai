@@ -112,7 +112,12 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
       )}
 
       {d.status === 'unconfirmed' && !d.dismissedAt && (
-        <ConfirmControl id={d.id} ownerUserId={d.ownerUserId} isMeeting={d.sourceRef?.startsWith('meeting:') ?? false} />
+        <ConfirmControl
+          id={d.id}
+          ownerUserId={d.ownerUserId}
+          isMeeting={d.sourceRef?.startsWith('meeting:') ?? false}
+          hasExternalAttendee={meeting?.attendees.some((a) => !a.isMember) ?? false}
+        />
       )}
     </main>
   );

@@ -55,7 +55,7 @@ async function seedConfirmed(visibility: 'workspace' | 'attendees_only', title: 
     visibility, participants: attendees,
     spans: [{ kind: 'decision', utteranceIdx: 1, speaker: 'Guru', tsMs: 100, text: `${title} verbatim` }],
   });
-  await confirmDecision(deps, WS_A, id, ATTENDEE); // unconfirmed -> confirmed
+  await confirmDecision(deps, WS_A, id, ATTENDEE, undefined, visibility); // D13: meeting confirm requires an explicit visibility
   return id;
 }
 

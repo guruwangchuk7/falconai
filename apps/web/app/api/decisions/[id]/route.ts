@@ -20,9 +20,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       const ownerUserId = typeof body.ownerUserId === 'string' && body.ownerUserId.trim() !== '' ? body.ownerUserId.trim() : undefined;
       const visibility = body.visibility === 'attendees_only' || body.visibility === 'workspace' ? body.visibility : undefined;
       const res = await confirmDecision(deps(), s.workspaceId, id, s.userId, ownerUserId, visibility);
-      const httpStatus = ({ confirmed: 200, missing_decision: 400, not_found: 404, already_final: 409 } as const)[res.status];
+      const httpStatus = ({ confirmed: 200, missing_decision: 400, visibility_required: 400, not_found: 404, already_final: 409 } as const)[res.status];
       const errors: Partial<Record<typeof res.status, string>> = {
         missing_decision: 'Add decision text before confirming.',
+        visibility_required: 'Pick who can see this meeting decision before confirming.',
         not_found: 'Decision not found.',
         already_final: 'This decision is already confirmed, superseded, or dismissed.',
       };
