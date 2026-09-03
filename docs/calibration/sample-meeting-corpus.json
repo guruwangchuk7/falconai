@@ -1,0 +1,30 @@
+[
+  {
+    "id": "clear-decision",
+    "gold": [{ "title": "Datastore for meeting working copies" }],
+    "utterances": [
+      { "idx": 0, "speaker": "Guru", "text": "We still haven't locked the datastore for meeting working copies. Redis or Postgres?" },
+      { "idx": 1, "speaker": "Tenzin", "text": "Postgres — we already run it and we get RLS for free." },
+      { "idx": 2, "speaker": "Guru", "text": "Agreed. Decision: Postgres is the durable store, Redis stays for the live event log." }
+    ]
+  },
+  {
+    "id": "no-decision-standup",
+    "gold": [],
+    "utterances": [
+      { "idx": 0, "speaker": "Guru", "text": "Quick standup. I finished the auth callback yesterday." },
+      { "idx": 1, "speaker": "Tenzin", "text": "I'm still debugging the flaky STT test, no blockers." },
+      { "idx": 2, "speaker": "Guru", "text": "Cool, let's sync after lunch." }
+    ]
+  },
+  {
+    "id": "intra-meeting-reversal",
+    "gold": [{ "title": "Use GitHub Actions for CI" }],
+    "utterances": [
+      { "idx": 0, "speaker": "Guru", "text": "Let's just go self-hosted runners for CI, they're faster." },
+      { "idx": 1, "speaker": "Tenzin", "text": "They're faster but they're another thing to patch and secure." },
+      { "idx": 2, "speaker": "Guru", "text": "Fair. Actually, scrap that — GitHub Actions, the free minutes cover us and there's no infra to babysit." },
+      { "idx": 3, "speaker": "Tenzin", "text": "Works for me." }
+    ]
+  }
+]
