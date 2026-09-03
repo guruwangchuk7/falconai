@@ -2,7 +2,8 @@ import { Worker } from 'bullmq';
 import { getDb } from '@falcon/db';
 import { createLlmProviders } from '@falcon/llm';
 import { createSecretStore } from '@falcon/secrets';
-import { EXTRACTOR_VERSION, reapExpiredWorkingCopies, type CoreDeps } from '@falcon/core';
+import { EXTRACTOR_VERSION, reapExpiredWorkingCopies, checkSilentExtractionStreak, type CoreDeps } from '@falcon/core';
+import { DECISION_MEETING_SILENT_STREAK } from '@falcon/config';
 import { conn, defaultJobOpts, maintenanceQueue, meetingExtractQueue, meetingExtractJobId, mineQueue, mineJobId, type DigestJob, type IndexJob, type MeetingExtractJob, type MineJob, type SyncJob } from '@falcon/queue';
 import { captureException, flushObservability, initObservability } from '@falcon/observability';
 import { handleDigest, handleIndex, handleMeetingExtract, handleMine, handleSync, msUntilNextUtcMidnight, pollAll, pollDigests } from './handlers.js';
@@ -61,6 +62,15 @@ const workers = [
     if (job.name === 'poll-sync') await pollAll(deps);
     else if (job.name === 'poll-digests') await pollDigests(deps);
     else if (job.name === 'reap-working-copies') await reapExpiredWorkingCopies(deps);
+    else if (job.name === 'check-extraction-health') {
+      // Silent-zero alarm: a run of all-`no_decision` extractions means extraction is likely BROKEN
+      // (parser/model/prompt/API), not that meetings had no decisions. Surface it loudly to Sentry.
+      const alerts = await checkSilentExtractionStreak(deps, DECISION_MEETING_SILENT_STREAK);
+      for (const a of alerts) {
+        console.error(`[extraction-health] workspace ${a.workspaceId}: last ${a.streak} meeting extractions ALL no_decision — extraction may be broken`);
+        captureException(new Error(`meeting extraction produced ${a.streak} consecutive no_decision — likely broken, not genuinely decisionless`), { kind: 'silent-extraction-streak', ...a });
+      }
+    }
   }, { connection }),
 ];
 
@@ -76,6 +86,8 @@ await maintenanceQueue().add('poll-sync', {}, { repeat: { pattern: '*/10 * * * *
 await maintenanceQueue().add('poll-digests', {}, { repeat: { pattern: '0 3 * * *' }, ...defaultJobOpts });
 // Enforce the working-copy TTL (D6 consent promise) — delete transcripts past expires_at every 30 min.
 await maintenanceQueue().add('reap-working-copies', {}, { repeat: { pattern: '*/30 * * * *' }, ...defaultJobOpts });
+// Silent-zero alarm: hourly, flag workspaces whose recent meeting extractions are ALL no_decision.
+await maintenanceQueue().add('check-extraction-health', {}, { repeat: { pattern: '0 * * * *' }, ...defaultJobOpts });
 
 console.log('falcon worker started: sync, index, digest, mine, meeting-extract, maintenance');
 

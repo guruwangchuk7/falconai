@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { schema } from '@falcon/db';
 import type { CoreDeps } from './deps.js';
 import type { MineResult } from './decision-mine.js';
@@ -38,6 +38,35 @@ export async function recordMinedMeeting(
       },
     });
   });
+}
+
+export interface SilentStreakAlert { workspaceId: string; streak: number; latestMinedAt: Date }
+
+/**
+ * Silent-zero detector. A parser break / model change / prompt regression / API-shape change is
+ * INDISTINGUISHABLE from a genuine "no decisions made" — all four produce `no_decision` ledger rows, which
+ * is exactly why the fenced-JSON bug returned nothing in prod while every test stayed green. This finds the
+ * signal that separates them: a RUN of consecutive `no_decision`. Any `suggested` resets the run, so a
+ * normal decision cadence never trips it; a systematic break makes every extraction silent and the run
+ * climbs past the threshold. Per-workspace (iterates workspaces like the reaper, since `mined_meeting` is
+ * RLS'd), newest first. Returns the workspaces whose last `threshold` extractions were ALL `no_decision`.
+ */
+export async function checkSilentExtractionStreak(deps: CoreDeps, threshold: number): Promise<SilentStreakAlert[]> {
+  if (threshold <= 0) return [];
+  const workspaces = await deps.db.rootDb.select({ id: schema.workspace.id }).from(schema.workspace);
+  const alerts: SilentStreakAlert[] = [];
+  for (const ws of workspaces) {
+    const rows = await deps.db.withTenant(ws.id, (tx) =>
+      tx.select({ result: schema.minedMeeting.result, minedAt: schema.minedMeeting.minedAt })
+        .from(schema.minedMeeting)
+        .orderBy(desc(schema.minedMeeting.minedAt))
+        .limit(threshold),
+    );
+    if (rows.length >= threshold && rows.every((r) => r.result === 'no_decision')) {
+      alerts.push({ workspaceId: ws.id, streak: rows.length, latestMinedAt: rows[0]!.minedAt });
+    }
+  }
+  return alerts;
 }
 
 /** Reserved meeting budget lane (D11): count today's meeting-sourced suggestions, independent of the PR

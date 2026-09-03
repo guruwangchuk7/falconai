@@ -104,3 +104,9 @@ export const MEETING_IDLE_GRACE_MS = 120_000;      // reconnect window before id
 export const MEETING_MAX_SESSION_MS = 4 * 3_600_000; // hard cap so a forgotten-open tab can't run forever (D8)
 export const DECISION_MEETING_DAILY_BUDGET = 20; // reserved meeting suggestion lane/day (D11) — separate from the PR miner's
 export const MEETING_CHUNK_SIZE = 40;            // utterances per extraction chunk (cost lever, §13)
+// Silent-zero alarm: a parser break / model change / prompt regression / API-shape change all look
+// IDENTICAL to a genuine "no decisions made" — every one becomes a `no_decision` ledger row (this is how
+// the fenced-JSON bug stayed invisible). Alert when the last N consecutive extractions in a workspace are
+// ALL `no_decision`: any real decision resets the run, so a normal cadence never trips it, but a systematic
+// break climbs unbounded. Set ABOVE the expected genuine no-decision run (a week of decisionless standups).
+export const DECISION_MEETING_SILENT_STREAK = 8;
