@@ -4,12 +4,25 @@ import {
   generateDigest, indexArtifact, upsertArtifact, type CoreDeps,
   extractDecisions, contentHash, normalizeTitle, getMinedRow, recordMined, isSuppressed,
   countSuggestionsToday, createDecision, EXTRACTOR_VERSION, shouldMine, type MineResult,
+  getMinedMeeting, recordMinedMeeting, countMeetingSuggestionsToday, readWorkingCopy, getMeeting,
+  deleteWorkingCopy, setTranscriptRetainedUntil, getWorkspaceRetentionDays, setWorkingCopyExpiry,
+  extractMeetingDecisions, MEETING_EXTRACTOR_VERSION, chunkUtterances, dedupeBySpanOverlap,
+  resolveSpans, SpanIndexError, rationalePass, type ScoredMeetingCandidate,
 } from '@falcon/core';
 import type { SecretStore } from '@falcon/secrets';
 import type { ArtifactInput } from '@falcon/integrations';
 import { buildAdapter, type ConnectionRow } from './adapters.js';
 import { digestQueue, indexQueue, mineQueue, mineJobId, syncQueue, defaultJobOpts, type DigestJob, type IndexJob, type SyncJob } from '@falcon/queue';
-import { DECISION_MINE_MIN_CONFIDENCE, DECISION_MINE_DAILY_BUDGET } from '@falcon/config';
+import {
+  DECISION_MINE_MIN_CONFIDENCE, DECISION_MINE_DAILY_BUDGET,
+  DECISION_MEETING_MIN_CONFIDENCE, DECISION_MEETING_DAILY_BUDGET, MEETING_CHUNK_SIZE, MEETING_RATIONALE_PASS_TOP_N,
+} from '@falcon/config';
+
+/** Milliseconds from `now` until the next UTC midnight (when the daily suggestion budget resets).
+ *  Used by the meeting-extract defer re-enqueue. Pure/testable; the jitter is added at the call site. */
+export function msUntilNextUtcMidnight(now: Date): number {
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1) - now.getTime();
+}
 
 async function memberLoginMap(deps: CoreDeps, workspaceId: string): Promise<Map<string, string>> {
   const rows = await deps.db.rootDb
@@ -147,6 +160,108 @@ export async function handleMine(deps: CoreDeps, payload: { workspaceId: string;
     result, extractorVersion: EXTRACTOR_VERSION, contentHash: hash,
     decisionId: decisionIds[0] ?? null, maxCandidateScore: maxScore || null,
   });
+  return { result, decisionIds };
+}
+
+export interface MeetingExtractOutcome { result: MineResult; decisionIds: string[] }
+
+/**
+ * In-meeting listener orchestration (meeting analog of handleMine). Post-meeting extraction over the
+ * DURABLE working copy (never Redis). PROVENANCE (F7.2): sourceRef is ALWAYS `meeting:{meetingId}`,
+ * never model output. Records are origin='meeting', visibility='workspace', unconfirmed (R23 — never
+ * auto-confirms). Ledger keyed on meetingId + MEETING_EXTRACTOR_VERSION (no contentHash — immutable
+ * transcript). Retention: on -> keep+extend working copy; off -> delete, spans persist as citation.
+ */
+export async function handleMeetingExtract(deps: CoreDeps, payload: { workspaceId: string; meetingId: string }): Promise<MeetingExtractOutcome> {
+  const { workspaceId, meetingId } = payload;
+
+  // 1. Ledger gate — skip iff already mined at this extractor version (immutable transcript, no hash).
+  const prior = await getMinedMeeting(deps, workspaceId, meetingId);
+  if (prior && prior.extractorVersion === MEETING_EXTRACTOR_VERSION) return { result: prior.result, decisionIds: [] };
+
+  // 2. Load meeting + durable working copy.
+  const meeting = await getMeeting(deps, workspaceId, meetingId);
+  if (!meeting) return { result: 'no_decision', decisionIds: [] }; // meeting gone
+  const wc = await readWorkingCopy(deps, workspaceId, meetingId);
+  if (!wc || wc.utterances.length === 0) {
+    // transcript discarded (e.g. deferred past the working-copy TTL) or empty — nothing to extract.
+    await recordMinedMeeting(deps, workspaceId, meetingId, { result: 'no_decision', extractorVersion: MEETING_EXTRACTOR_VERSION, transcriptRetainedUntil: meeting.transcriptRetainedUntil });
+    return { result: 'no_decision', decisionIds: [] };
+  }
+
+  // 3. Budget gate (reserved meeting lane) — over budget → defer (write NOTHING; the worker re-enqueues).
+  if (await countMeetingSuggestionsToday(deps, workspaceId) >= DECISION_MEETING_DAILY_BUDGET) return { result: 'deferred', decisionIds: [] };
+
+  // 4. Chunk + extract.
+  const utterances = wc.utterances;
+  const byIdx = new Map(utterances.map((u) => [u.idx, u]));
+  const indexed = utterances.map((u) => ({ idx: u.idx, speaker: u.speaker, text: u.text }));
+  const sourceRef = `meeting:${meetingId}`;
+  const raw: ScoredMeetingCandidate[] = [];
+  for (const chunk of chunkUtterances(indexed, MEETING_CHUNK_SIZE)) {
+    raw.push(...(await extractMeetingDecisions(deps, { utterances: chunk, sourceRef, ownerHint: null })));
+  }
+  const maxScore = raw.reduce((m, c) => Math.max(m, c.score), 0);
+
+  // 5. Threshold (+ require a decision span, D9) + cross-chunk dedup.
+  const deduped = dedupeBySpanOverlap(raw.filter((c) => c.score >= DECISION_MEETING_MIN_CONFIDENCE && c.decisionSpans.length > 0));
+
+  // 6. Targeted rationale pass for the top-N (recovers out-of-chunk rationale). Merge, dedup indices.
+  for (const c of [...deduped].sort((a, b) => b.score - a.score).slice(0, MEETING_RATIONALE_PASS_TOP_N)) {
+    const extra = await rationalePass(deps, { title: c.title, decision: c.decision }, indexed, sourceRef);
+    c.rationaleSpans = Array.from(new Set([...c.rationaleSpans, ...extra]));
+  }
+
+  // 7. Resolve spans + create records (within-run dedup + suggest-time suppression + provenance).
+  const decisionIds: string[] = [];
+  const createdTitles = new Set<string>();
+  let hadError = false;
+  for (const c of deduped) {
+    const norm = normalizeTitle(c.title);
+    if (createdTitles.has(norm)) continue;
+    if (await isSuppressed(deps, workspaceId, sourceRef, norm)) continue;
+    let spans;
+    try { spans = resolveSpans(c, byIdx); }
+    catch (e) { if (e instanceof SpanIndexError) { hadError = true; continue; } throw e; } // out-of-range → drop candidate
+    const { id } = await createDecision(deps, workspaceId, {
+      title: c.title, decision: c.decision,
+      ...(c.rationale !== undefined && { rationale: c.rationale }),
+      ...(c.options !== undefined && { options: c.options }),
+      ...(c.dissent !== undefined && { dissent: c.dissent }),
+      // visibility is left UNSET (NULL) on purpose — a meeting decision is unchosen until a human picks
+      // at confirm (D13). NULL keeps the draft attendee-scoped in the queue instead of workspace-visible.
+      sourceRef, origin: 'meeting', participants: meeting.attendees, spans,
+    });
+    createdTitles.add(norm);
+    decisionIds.push(id);
+  }
+
+  // 8. Compute result BEFORE the retention step so the error branch can decide whether to preserve
+  // the working copy (D6/D7).
+  const result: MineResult = decisionIds.length ? 'suggested' : hadError ? 'error' : 'no_decision';
+
+  // 9. Retention: on → keep + extend the working copy; off → delete it (spans already persisted) —
+  // UNLESS extraction produced a pure error (every candidate hit SpanIndexError: zero decisions,
+  // zero spans persisted). In that case, preserve the transcript for a re-mine recovery window
+  // instead of discarding the irreplaceable meeting with nothing to show for it (D6/D7). Its
+  // existing 24-72h working-copy TTL still bounds it — we're just not proactively deleting.
+  const days = await getWorkspaceRetentionDays(deps, workspaceId);
+  let retainedUntil: Date | null = null;
+  if (days > 0) {
+    retainedUntil = new Date(Date.now() + days * 86_400_000);
+    await setWorkingCopyExpiry(deps, workspaceId, meetingId, retainedUntil);
+    await setTranscriptRetainedUntil(deps, workspaceId, meetingId, retainedUntil);
+  } else if (result !== 'error') {
+    await deleteWorkingCopy(deps, workspaceId, meetingId);
+    await setTranscriptRetainedUntil(deps, workspaceId, meetingId, null);
+  } else {
+    // preserve transcript on error for re-mine recovery, D6/D7. Retention is still off — we just
+    // don't proactively delete the working copy.
+    await setTranscriptRetainedUntil(deps, workspaceId, meetingId, null);
+  }
+
+  // 10. Ledger.
+  await recordMinedMeeting(deps, workspaceId, meetingId, { result, extractorVersion: MEETING_EXTRACTOR_VERSION, transcriptRetainedUntil: retainedUntil, decisionId: decisionIds[0] ?? null, maxCandidateScore: maxScore || null });
   return { result, decisionIds };
 }
 

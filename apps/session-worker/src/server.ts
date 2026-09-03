@@ -5,6 +5,7 @@ import type { Redis } from 'ioredis';
 import type { SttProvider, SttStream } from '@falcon/stt';
 import { createEventLog, type EventLog } from '@falcon/session-core';
 import { createOwnership, type Ownership, ownerFor } from './ownership.js';
+import { MEETING_IDLE_GRACE_MS, MEETING_MAX_SESSION_MS } from '@falcon/config';
 
 /** Build the Fastify app (health + readiness). Kept separate so it is injectable in tests. */
 export function createSessionApp(): FastifyInstance {
@@ -70,6 +71,11 @@ export interface SessionWorkerDeps {
   workerId: string;
   /** The live worker set, for consistent-hash pinning (a session is served by ownerFor(id, workers)). */
   liveWorkers?: readonly string[];
+  /** Called once when a session's meeting ends (explicit end / idle / cap). Injected in tests; wired to
+   *  assembleAndEnqueue in index.ts. Absent → meeting-end capture disabled. */
+  onMeetingEnd?: (sessionId: string) => Promise<void>;
+  meetingIdleGraceMs?: number;  // default MEETING_IDLE_GRACE_MS
+  meetingMaxSessionMs?: number; // default MEETING_MAX_SESSION_MS
 }
 
 /**
@@ -81,6 +87,34 @@ export interface SessionWorkerDeps {
  */
 export function attachSessionWs(app: FastifyInstance, deps: SessionWorkerDeps): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
+
+  const graceMs = deps.meetingIdleGraceMs ?? MEETING_IDLE_GRACE_MS;
+  const capMs = deps.meetingMaxSessionMs ?? MEETING_MAX_SESSION_MS;
+
+  interface Lifecycle { conns: Set<WebSocket>; graceTimer?: ReturnType<typeof setTimeout>; capTimer?: ReturnType<typeof setTimeout>; ended: boolean }
+  const lifecycles = new Map<string, Lifecycle>();
+
+  // End a meeting exactly once: mark ended synchronously (concurrent triggers no-op), clear timers,
+  // notify remaining clients, then fire onMeetingEnd. All connections for a session land on this owner
+  // worker (consistent-hash pinning), so per-worker in-memory tracking is authoritative.
+  const triggerEnd = (sessionId: string, reason: 'explicit' | 'idle' | 'cap') => {
+    const lc = lifecycles.get(sessionId);
+    if (!lc || lc.ended) return;
+    lc.ended = true;
+    if (lc.graceTimer) clearTimeout(lc.graceTimer);
+    if (lc.capTimer) clearTimeout(lc.capTimer);
+    for (const w of lc.conns) if (w.readyState === 1 /* OPEN */) w.send(JSON.stringify({ type: 'meeting_ended', reason }));
+    lifecycles.delete(sessionId);
+    void (async () => {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try { await deps.onMeetingEnd?.(sessionId); return; }
+        catch (err) {
+          if (attempt === 3) console.error(`[session ${sessionId}] meeting-end failed after 3 attempts:`, err instanceof Error ? err.message : err);
+          else await new Promise((r) => setTimeout(r, 500 * attempt));
+        }
+      }
+    })();
+  };
 
   app.server.on('upgrade', (req, socket, head) => {
     const parsed = parseConnUrl(req.url);
@@ -103,25 +137,62 @@ export function attachSessionWs(app: FastifyInstance, deps: SessionWorkerDeps): 
     const ownership = createOwnership(deps.redis, sessionId, deps.workerId);
     const eventLog = createEventLog(deps.redis, sessionId);
 
+    // Registered synchronously — BEFORE the async lease claim below — because a client can send
+    // end_meeting, push audio, or close the instant it sees 'open', racing ahead of the claim's
+    // Redis round-trip. Node delivers 'message'/'close' only to listeners that exist at emit time,
+    // so anything attached after the `await` can silently miss an event that already fired.
+    let stream: SttStream | undefined;
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    const audioBacklog: Uint8Array[] = [];
+    let endRequested = false;
+    let closedEarly = false;
+    let registered = false;
+    ws.on('message', (data, isBinary) => {
+      if (isBinary) {
+        const frame = new Uint8Array(data as Buffer);
+        if (stream) stream.pushAudio(frame, 0); else audioBacklog.push(frame);
+        return;
+      }
+      try {
+        const msg = JSON.parse(data.toString()) as { type?: string };
+        if (msg?.type === 'end_meeting') { if (registered) triggerEnd(sessionId, 'explicit'); else endRequested = true; }
+      } catch { /* ignore malformed control frames */ }
+    });
+    const onDisconnect = () => {
+      if (heartbeat) clearInterval(heartbeat);
+      if (stream) void stream.close();
+      const cur = lifecycles.get(sessionId);
+      if (cur && !cur.ended) {
+        cur.conns.delete(ws);
+        if (cur.conns.size === 0 && !cur.graceTimer) {
+          cur.graceTimer = setTimeout(() => triggerEnd(sessionId, 'idle'), graceMs);
+        }
+      }
+    };
+    ws.on('close', () => { closedEarly = true; onDisconnect(); });
+
     void (async () => {
       const token = await ownership.claim();
       if (token === null) {
         ws.close(1013, 'not session owner'); // another live worker holds the lease
         return;
       }
+      // Register in the session lifecycle (meeting-end triggers, B4).
+      let lc = lifecycles.get(sessionId);
+      if (!lc) { lc = { conns: new Set(), ended: false }; lifecycles.set(sessionId, lc); }
+      lc.conns.add(ws);
+      registered = true;
+      if (lc.graceTimer) { clearTimeout(lc.graceTimer); delete lc.graceTimer; } // reconnect cancels idle-end
+      if (!lc.capTimer) lc.capTimer = setTimeout(() => triggerEnd(sessionId, 'cap'), capMs);
+      if (endRequested) triggerEnd(sessionId, 'explicit'); // end_meeting raced ahead of the claim
+      if (closedEarly) { onDisconnect(); return; } // the client vanished before the claim resolved
       // Renew the lease on a heartbeat while the connection is alive — otherwise it expires (~3s TTL)
       // and runIngest's split-brain guard stops forwarding transcripts mid-session.
-      const heartbeat = setInterval(() => {
+      heartbeat = setInterval(() => {
         void ownership.renew();
       }, 1000);
-      const stream = deps.stt.openStream({ userId });
-      ws.on('message', (data, isBinary) => {
-        if (isBinary) stream.pushAudio(new Uint8Array(data as Buffer), 0);
-      });
-      ws.on('close', () => {
-        clearInterval(heartbeat);
-        void stream.close();
-      });
+      stream = deps.stt.openStream({ userId });
+      for (const frame of audioBacklog.splice(0)) stream.pushAudio(frame, 0);
       // PRIVACY (PRD §9.3): a person's raw transcript goes back ONLY to that person — never to other
       // panels. The only thing ever broadcast to everyone is a grounded, blame-neutral CARD (Phase 4,
       // F9). The full transcript still flows into the session event log for the Coordinator to read.
@@ -130,7 +201,7 @@ export function attachSessionWs(app: FastifyInstance, deps: SessionWorkerDeps): 
           if (ws.readyState === 1 /* OPEN */) ws.send(JSON.stringify(msg));
         },
       });
-      clearInterval(heartbeat);
+      if (heartbeat) clearInterval(heartbeat);
     })();
   });
 

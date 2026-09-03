@@ -1,9 +1,10 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { schema } from '@falcon/db';
+import { schema, type TenantTx } from '@falcon/db';
 import { EMBEDDING_MODEL, EMBEDDING_VERSION } from '@falcon/llm';
 import { DECISION_RELEVANCE_MAX_DISTANCE } from '@falcon/config';
 import type { CoreDeps } from './deps.js';
 import type { UnconfirmedMatch } from './decision-status.js';
+import type { Attendee } from './meeting.js';
 
 export interface DecisionResult {
   id: string;
@@ -13,6 +14,16 @@ export interface DecisionResult {
   createdAt: string;
   freshnessFlag: boolean; // older than the workspace horizon
   score: number;
+}
+
+/** A resolved evidence span attached to a meeting-sourced decision (D4). Structurally matches C2's
+ *  `ResolvedSpan` — text, not indices, so it survives independent of the (short-lived) transcript. */
+export interface DecisionSpanInput {
+  kind: 'decision' | 'rationale';
+  utteranceIdx: number;
+  speaker: string | null;
+  tsMs: number;
+  text: string;
 }
 
 /** Input for capturing a decision (F10.1). Stored as `unconfirmed`; embedded at CREATE (R2) so it is
@@ -25,7 +36,10 @@ export interface CreateDecisionInput {
   dissent?: string;
   ownerUserId?: string;
   sourceRef?: string;
-  origin?: 'manual' | 'suggested';
+  origin?: 'manual' | 'suggested' | 'meeting';
+  visibility?: 'workspace' | 'attendees_only'; // D13 — defaults to 'workspace'
+  participants?: Attendee[];                    // D12 — attendee snapshot
+  spans?: DecisionSpanInput[];                  // D4 — resolved evidence (meeting-sourced)
 }
 
 /** A row in the unconfirmed queue (content IS shown here — this is the human confirm surface, not an
@@ -76,8 +90,21 @@ export async function createDecision(
         embedding,
         embeddingModel: EMBEDDING_MODEL,
         embeddingVersion: EMBEDDING_VERSION,
+        // D13: a meeting decision is created with NO visibility (NULL = unchosen) so the whole workspace
+        // can't read the draft before the confirm-time choice; it stays attendee-scoped until picked.
+        // Non-meeting records have no tier and take the 'workspace' default. An explicit input wins.
+        visibility: input.visibility ?? (input.origin === 'meeting' ? null : 'workspace'),
+        participants: input.participants ?? null,
       })
       .returning({ id: schema.decisionRecord.id });
+    if (input.spans && input.spans.length > 0) {
+      await tx.insert(schema.decisionSpan).values(
+        input.spans.map((s) => ({
+          workspaceId, decisionId: row!.id, kind: s.kind,
+          speaker: s.speaker, tsMs: s.tsMs, utteranceIdx: s.utteranceIdx, text: s.text,
+        })),
+      );
+    }
     return { id: row!.id };
   });
 }
@@ -95,16 +122,21 @@ export async function confirmDecision(
   id: string,
   confirmedBy: string,
   ownerUserId?: string,
-): Promise<{ status: 'confirmed' | 'not_found' | 'already_final' | 'missing_decision' }> {
+  visibility?: 'workspace' | 'attendees_only',
+): Promise<{ status: 'confirmed' | 'not_found' | 'already_final' | 'missing_decision' | 'visibility_required' }> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const [row] = await tx
-      .select({ status: schema.decisionRecord.status, decision: schema.decisionRecord.decision, dismissedAt: schema.decisionRecord.dismissedAt })
+      .select({ status: schema.decisionRecord.status, decision: schema.decisionRecord.decision, dismissedAt: schema.decisionRecord.dismissedAt, visibility: schema.decisionRecord.visibility })
       .from(schema.decisionRecord)
       .where(eq(schema.decisionRecord.id, id))
       .limit(1);
     if (!row) return { status: 'not_found' }; // absent, or another tenant's record (RLS hides it)
     if (row.dismissedAt || row.status !== 'unconfirmed') return { status: 'already_final' }; // confirmed/superseded/dismissed
     if (!row.decision || row.decision.trim() === '') return { status: 'missing_decision' };
+    // D13 (refined): the write gate reads ACTUAL STATE — a record whose visibility is still NULL (nobody
+    // has chosen; this is how meeting decisions are created) cannot be confirmed without a choice. Reading
+    // the real column, not inferring from origin, means the check can't drift from how the row was written.
+    if (row.visibility === null && !visibility) return { status: 'visibility_required' };
     await tx
       .update(schema.decisionRecord)
       .set({
@@ -112,9 +144,27 @@ export async function confirmDecision(
         confirmedBy,
         confirmedAt: new Date(),
         ...(ownerUserId ? { ownerUserId } : {}),
+        ...(visibility ? { visibility } : {}),
       })
       .where(and(eq(schema.decisionRecord.id, id), eq(schema.decisionRecord.status, 'unconfirmed')));
     return { status: 'confirmed' };
+  });
+}
+
+/**
+ * Widen a confirmed record's visibility tier (D13). ONLY attendees_only -> workspace is permitted:
+ * the tier governs the human-authored summary, so widening is an ordinary editorial act, but narrowing
+ * after non-attendees may have read it is theater — and is impossible here by construction (there is no
+ * API that sets attendees_only on a confirmed record; the tier is chosen once at confirm). Idempotent.
+ */
+export async function setVisibility(deps: CoreDeps, workspaceId: string, id: string): Promise<{ status: 'widened' | 'already_workspace' | 'not_found' }> {
+  return deps.db.withTenant(workspaceId, async (tx) => {
+    const [r] = await tx.select({ visibility: schema.decisionRecord.visibility })
+      .from(schema.decisionRecord).where(eq(schema.decisionRecord.id, id)).limit(1);
+    if (!r) return { status: 'not_found' };
+    if (r.visibility === 'workspace') return { status: 'already_workspace' }; // one-way: never narrows
+    await tx.update(schema.decisionRecord).set({ visibility: 'workspace' }).where(eq(schema.decisionRecord.id, id));
+    return { status: 'widened' };
   });
 }
 
@@ -157,20 +207,48 @@ export async function supersedeDecision(
  * refused. Idempotent.
  */
 export async function dismissDecision(deps: CoreDeps, workspaceId: string, id: string): Promise<{ dismissed: boolean }> {
-  return deps.db.withTenant(workspaceId, async (tx) => {
+  // Read the attendee snapshot first: deleting the (attendee-gated) decision_span rows requires an
+  // attendee viewer context, because 0008's RESTRICTIVE SELECT policy also governs a DELETE's WHERE.
+  const participants = await deps.db.withTenant(workspaceId, async (tx) => {
+    const [r] = await tx.select({ participants: schema.decisionRecord.participants })
+      .from(schema.decisionRecord).where(eq(schema.decisionRecord.id, id)).limit(1);
+    return r?.participants;
+  });
+  const attendeeId = Array.isArray(participants) ? (participants[0] as { userId?: string })?.userId : undefined;
+
+  const run = async (tx: TenantTx) => {
     const res = await tx
       .update(schema.decisionRecord)
       .set({ dismissedAt: new Date() })
       .where(and(eq(schema.decisionRecord.id, id), eq(schema.decisionRecord.status, 'unconfirmed'), isNull(schema.decisionRecord.dismissedAt)))
       .returning({ id: schema.decisionRecord.id });
+    if (res.length > 0) {
+      // D5: dismissing deletes the verbatim spans — tombstone keeps only the normalized title.
+      await tx.delete(schema.decisionSpan).where(eq(schema.decisionSpan.decisionId, id));
+    }
     return { dismissed: res.length > 0 };
-  });
+  };
+
+  // If the record has attendees (meeting-sourced), run under an attendee viewer so the span DELETE
+  // passes the 0008 gate; otherwise a plain tenant context (no spans exist to delete).
+  return attendeeId
+    ? deps.db.withViewer(workspaceId, attendeeId, run)
+    : deps.db.withTenant(workspaceId, run);
 }
 
 /** List the unconfirmed queue (US1) — awaiting human ratification, excluding dismissed. Newest first,
  *  bounded (review finding #5) so a large backlog can't load unboundedly. */
-export async function listQueue(deps: CoreDeps, workspaceId: string, limit = 100): Promise<QueueItem[]> {
+export async function listQueue(deps: CoreDeps, workspaceId: string, limit = 100, sourceRef?: string, viewerUserId?: string): Promise<QueueItem[]> {
   return deps.db.withTenant(workspaceId, async (tx) => {
+    // Visibility tier on the QUEUE (D13): a meeting draft is created with visibility NULL (unchosen) and
+    // belongs to the room until confirmed — NULL and 'attendees_only' both fall to the attendee check, so
+    // a non-attendee's queue omits it; only 'workspace' records are visible to all. Same predicate as
+    // searchDecisions/listConfirmed. Without a viewer, show only 'workspace' (fail-closed: never a draft).
+    const tier = viewerUserId
+      ? sql`(${schema.decisionRecord.visibility} = 'workspace' or exists (
+            select 1 from jsonb_array_elements(case when jsonb_typeof(coalesce(${schema.decisionRecord.participants}, '[]'::jsonb)) = 'array' then ${schema.decisionRecord.participants} else '[]'::jsonb end) p
+            where p->>'userId' = ${viewerUserId}))`
+      : sql`${schema.decisionRecord.visibility} = 'workspace'`;
     const rows = await tx
       .select({
         id: schema.decisionRecord.id,
@@ -183,10 +261,55 @@ export async function listQueue(deps: CoreDeps, workspaceId: string, limit = 100
         createdAt: schema.decisionRecord.createdAt,
       })
       .from(schema.decisionRecord)
-      .where(and(eq(schema.decisionRecord.status, 'unconfirmed'), isNull(schema.decisionRecord.dismissedAt)))
+      .where(and(
+        eq(schema.decisionRecord.status, 'unconfirmed'),
+        isNull(schema.decisionRecord.dismissedAt),
+        sourceRef ? eq(schema.decisionRecord.sourceRef, sourceRef) : undefined,
+        tier,
+      ))
       .orderBy(desc(schema.decisionRecord.createdAt))
       .limit(limit);
     return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+  });
+}
+
+/** A confirmed decision as shown in the browsable Decision Memory list. */
+export interface ConfirmedItem {
+  id: string;
+  title: string;
+  decision: string | null;
+  sourceRef: string | null;
+  origin: string;
+  confirmedAt: string | null;
+}
+
+/**
+ * Browse the org's confirmed Decision Memory (the read side of the confirm gate, F10.1). Confirmed
+ * only — never unconfirmed (not yet ratified) or superseded (replaced). Applies the SAME visibility
+ * tier as searchDecisions: `attendees_only` records surface only to a viewer in the participants
+ * snapshot (D13); without a viewer, only `workspace`-tier records. Newest confirmations first.
+ */
+export async function listConfirmed(deps: CoreDeps, workspaceId: string, limit = 100, viewerUserId?: string): Promise<ConfirmedItem[]> {
+  return deps.db.withTenant(workspaceId, async (tx) => {
+    const tier = viewerUserId
+      ? sql`(${schema.decisionRecord.visibility} = 'workspace' or exists (
+            select 1 from jsonb_array_elements(case when jsonb_typeof(coalesce(${schema.decisionRecord.participants}, '[]'::jsonb)) = 'array' then ${schema.decisionRecord.participants} else '[]'::jsonb end) p
+            where p->>'userId' = ${viewerUserId}))`
+      : sql`${schema.decisionRecord.visibility} = 'workspace'`;
+    const rows = await tx
+      .select({
+        id: schema.decisionRecord.id,
+        title: schema.decisionRecord.title,
+        decision: schema.decisionRecord.decision,
+        sourceRef: schema.decisionRecord.sourceRef,
+        origin: schema.decisionRecord.origin,
+        confirmedAt: schema.decisionRecord.confirmedAt,
+      })
+      .from(schema.decisionRecord)
+      .where(and(eq(schema.decisionRecord.status, 'confirmed'), tier))
+      .orderBy(desc(schema.decisionRecord.confirmedAt))
+      .limit(limit);
+    return rows.map((r) => ({ ...r, confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null }));
   });
 }
 
@@ -201,11 +324,14 @@ export interface DecisionDetail {
   options: unknown;
   ownerUserId: string | null;
   status: string;
+  origin: string;
   sourceRef: string | null;
   supersedesId: string | null;
   supersedesTitle: string | null;
+  supersedesRestricted: boolean;   // the record THIS supersedes is attendees_only & inaccessible (D15)
   supersededById: string | null; // the record that superseded THIS one (chain, other direction)
   supersededByTitle: string | null;
+  supersededByRestricted: boolean; // the record that superseded THIS one is attendees_only & inaccessible (D15)
   confirmedBy: string | null;
   confirmedAt: string | null;
   dismissedAt: string | null;
@@ -217,26 +343,51 @@ export async function getDecision(
   deps: CoreDeps,
   workspaceId: string,
   id: string,
+  viewerUserId?: string,
   horizonDays = 180,
 ): Promise<DecisionDetail | null> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const [r] = await tx.select().from(schema.decisionRecord).where(eq(schema.decisionRecord.id, id)).limit(1);
     if (!r) return null;
+    // D13 tier gate: an attendees_only record is invisible to anyone outside its participants
+    // snapshot (SUMMARY tier), even within the same workspace/tenant.
+    if (r.visibility === 'attendees_only') {
+      const isAttendee = !!viewerUserId && Array.isArray(r.participants) &&
+        (r.participants as { userId?: string }[]).some((p) => p?.userId === viewerUserId);
+      if (!isAttendee) return null;
+    }
+    // D15: an accessible chain neighbor's title may itself be attendees_only and inaccessible to this
+    // viewer — the chain link must project as a restricted FACT, never leak the neighbor's title.
+    const canSee = (visibility: string | null, participants: unknown): boolean =>
+      visibility !== 'attendees_only' ||
+      (!!viewerUserId && Array.isArray(participants) && (participants as { userId?: string }[]).some((p) => p?.userId === viewerUserId));
+
     let supersedesTitle: string | null = null;
+    let supersedesRestricted = false;
     if (r.supersedesId) {
       const [old] = await tx
-        .select({ title: schema.decisionRecord.title })
+        .select({ title: schema.decisionRecord.title, visibility: schema.decisionRecord.visibility, participants: schema.decisionRecord.participants })
         .from(schema.decisionRecord)
         .where(eq(schema.decisionRecord.id, r.supersedesId))
         .limit(1);
-      supersedesTitle = old?.title ?? null;
+      if (old) {
+        if (canSee(old.visibility, old.participants)) supersedesTitle = old.title;
+        else supersedesRestricted = true;
+      }
     }
     // The record that superseded THIS one, if any (chain, forward direction).
     const [successor] = await tx
-      .select({ id: schema.decisionRecord.id, title: schema.decisionRecord.title })
+      .select({ id: schema.decisionRecord.id, title: schema.decisionRecord.title, visibility: schema.decisionRecord.visibility, participants: schema.decisionRecord.participants })
       .from(schema.decisionRecord)
       .where(eq(schema.decisionRecord.supersedesId, r.id))
       .limit(1);
+    let supersededById: string | null = null;
+    let supersededByTitle: string | null = null;
+    let supersededByRestricted = false;
+    if (successor) {
+      if (canSee(successor.visibility, successor.participants)) { supersededById = successor.id; supersededByTitle = successor.title; }
+      else supersededByRestricted = true;
+    }
     const horizon = Date.now() - horizonDays * 86_400_000;
     return {
       id: r.id,
@@ -247,11 +398,14 @@ export async function getDecision(
       options: r.options,
       ownerUserId: r.ownerUserId,
       status: r.status,
+      origin: r.origin,
       sourceRef: r.sourceRef,
       supersedesId: r.supersedesId,
       supersedesTitle,
-      supersededById: successor?.id ?? null,
-      supersededByTitle: successor?.title ?? null,
+      supersedesRestricted,
+      supersededById,
+      supersededByTitle,
+      supersededByRestricted,
       confirmedBy: r.confirmedBy,
       confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
       dismissedAt: r.dismissedAt ? r.dismissedAt.toISOString() : null,
@@ -304,7 +458,10 @@ export async function matchUnconfirmedCandidates(
 
 /** F2.4 / F10.1 — Org Decision Index search. ONLY confirmed records are retrievable (FR-012);
  *  superseded is excluded; results past the freshness horizon are flagged. `queryVec` (R7) lets the
- *  caller share one query embedding across retrieval paths. */
+ *  caller share one query embedding across retrieval paths. `viewerUserId` (D13 tier gate) excludes
+ *  `attendees_only` records the viewer isn't a participant of; with no viewer, ALL `attendees_only`
+ *  records are excluded (workspace-tier only) — existing callers that pass no viewer keep their
+ *  current (workspace-tier) behavior unchanged. */
 export async function searchDecisions(
   deps: CoreDeps,
   workspaceId: string,
@@ -312,11 +469,18 @@ export async function searchDecisions(
   k = 10,
   horizonDays = 180,
   queryVec?: number[],
+  viewerUserId?: string,
 ): Promise<DecisionResult[]> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const qvec = queryVec ?? (await deps.llm.embeddings.embed([query], 'query'))[0];
     const vecStr = `[${qvec!.join(',')}]`;
     const dist = sql<number>`${schema.decisionRecord.embedding} <=> ${vecStr}::vector`;
+
+    const tier = viewerUserId
+      ? sql`(${schema.decisionRecord.visibility} = 'workspace' or exists (
+            select 1 from jsonb_array_elements(case when jsonb_typeof(coalesce(${schema.decisionRecord.participants}, '[]'::jsonb)) = 'array' then ${schema.decisionRecord.participants} else '[]'::jsonb end) p
+            where p->>'userId' = ${viewerUserId}))`
+      : sql`${schema.decisionRecord.visibility} = 'workspace'`;
 
     const rows = await tx
       .select({
@@ -328,7 +492,7 @@ export async function searchDecisions(
         score: dist,
       })
       .from(schema.decisionRecord)
-      .where(and(eq(schema.decisionRecord.status, 'confirmed'), sql`${schema.decisionRecord.embedding} is not null`))
+      .where(and(eq(schema.decisionRecord.status, 'confirmed'), sql`${schema.decisionRecord.embedding} is not null`, tier))
       .orderBy(dist)
       .limit(k);
 
@@ -342,5 +506,19 @@ export async function searchDecisions(
       freshnessFlag: r.createdAt.getTime() < horizon,
       score: Number(r.score),
     }));
+  });
+}
+
+export interface DecisionSpanView { kind: string; utteranceIdx: number | null; speaker: string | null; tsMs: number | null; text: string }
+
+/** Read a decision's verbatim spans as a specific viewer. Attendee-gating is enforced by the DB
+ *  (RESTRICTIVE RLS on decision_span, 0008) — a non-attendee simply gets zero rows. MUST use withViewer:
+ *  a withTenant read now fails closed (returns nothing), and a raw/admin read would bypass the gate. */
+export async function getDecisionSpans(deps: CoreDeps, workspaceId: string, decisionId: string, viewerUserId: string): Promise<DecisionSpanView[]> {
+  return deps.db.withViewer(workspaceId, viewerUserId, async (tx) => {
+    return tx.select({
+      kind: schema.decisionSpan.kind, utteranceIdx: schema.decisionSpan.utteranceIdx,
+      speaker: schema.decisionSpan.speaker, tsMs: schema.decisionSpan.tsMs, text: schema.decisionSpan.text,
+    }).from(schema.decisionSpan).where(eq(schema.decisionSpan.decisionId, decisionId)).orderBy(schema.decisionSpan.tsMs);
   });
 }

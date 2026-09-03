@@ -9,7 +9,7 @@ export async function GET(req: Request) {
   const s = await getActiveSession();
   if (!s) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const q = new URL(req.url).searchParams.get('q') ?? '';
-  const results = q ? await searchDecisions(deps(), s.workspaceId, q) : [];
+  const results = q ? await searchDecisions(deps(), s.workspaceId, q, 10, 180, undefined, s.userId) : [];
   return NextResponse.json({ results });
 }
 

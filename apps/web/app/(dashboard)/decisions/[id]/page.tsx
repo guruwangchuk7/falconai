@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getDecision } from '@falcon/core';
+import { getDecision, getDecisionSpans, getMeeting } from '@falcon/core';
 import { getActiveSession } from '@/lib/session';
 import { deps } from '@/lib/deps';
 import { ConfirmControl } from './ConfirmControl';
@@ -25,7 +25,7 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
   const session = await getActiveSession();
   if (!session) return null;
   const { id } = await params;
-  const d = await getDecision(deps(), session.workspaceId, id);
+  const d = await getDecision(deps(), session.workspaceId, id, session.userId);
 
   if (!d) {
     return (
@@ -35,6 +35,16 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
       </main>
     );
   }
+
+  const isMeeting = d.origin === 'meeting';
+  // sourceRef is only the pointer used to fetch the meeting; whether this IS a meeting decision is the
+  // typed `origin`, so the visibility chooser + guard can't drift with a sourceRef string convention.
+  const meetingId = isMeeting && d.sourceRef?.startsWith('meeting:') ? d.sourceRef.slice('meeting:'.length) : null;
+  const meeting = meetingId ? await getMeeting(deps(), session.workspaceId, meetingId) : null;
+
+  const spans = await getDecisionSpans(deps(), session.workspaceId, id, session.userId);
+  const decisionSpans = spans.filter((s) => s.kind === 'decision');
+  const rationaleSpans = spans.filter((s) => s.kind === 'rationale');
 
   const options = Array.isArray(d.options) ? (d.options as unknown[]) : null;
   return (
@@ -57,22 +67,61 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
         )}
         {d.dissent && <Row label="Dissent">{d.dissent}</Row>}
         {d.status !== 'unconfirmed' && d.ownerUserId && <Row label="Owner">{d.ownerUserId}</Row>}
-        {d.sourceRef && <Row label="Source">{d.sourceRef}</Row>}
-        {d.supersedesId && (
-          <Row label="Supersedes">
-            <Link href={`/decisions/${d.supersedesId}`} className="underline">{d.supersedesTitle ?? d.supersedesId}</Link>
+        {d.sourceRef && (
+          <Row label="Source">
+            {meeting
+              ? <Link href={`/decisions?meetingId=${meetingId}`} className="underline">{meeting.title ?? 'Meeting'}{meeting.endedAt ? ` · ${new Date(meeting.endedAt).toLocaleString()}` : ''}</Link>
+              : d.sourceRef}
           </Row>
         )}
-        {d.supersededById && (
+        {(d.supersedesId || d.supersedesRestricted) && (
+          <Row label="Supersedes">
+            {d.supersedesRestricted
+              ? <span className="text-muted">a decision you don’t have access to</span>
+              : <Link href={`/decisions/${d.supersedesId}`} className="underline">{d.supersedesTitle ?? d.supersedesId}</Link>}
+          </Row>
+        )}
+        {(d.supersededById || d.supersededByRestricted) && (
           <Row label="Superseded by">
-            <Link href={`/decisions/${d.supersededById}`} className="underline">{d.supersededByTitle ?? d.supersededById}</Link>
+            {d.supersededByRestricted
+              ? <span className="text-muted">a decision you don’t have access to</span>
+              : <Link href={`/decisions/${d.supersededById}`} className="underline">{d.supersededByTitle ?? d.supersededById}</Link>}
           </Row>
         )}
         {d.confirmedAt && <Row label="Confirmed">{new Date(d.confirmedAt).toLocaleString()}{d.confirmedBy ? ` · ${d.confirmedBy}` : ''}</Row>}
         <Row label="Created">{new Date(d.createdAt).toLocaleString()}</Row>
       </div>
 
-      {d.status === 'unconfirmed' && !d.dismissedAt && <ConfirmControl id={d.id} ownerUserId={d.ownerUserId} />}
+      {spans.length > 0 && (
+        <div className="mt-6">
+          <div className="text-xs uppercase tracking-wide text-muted">Meeting excerpt · visible to attendees only</div>
+          {decisionSpans.length > 0 && (
+            <div className="mt-2">
+              <div className="text-xs text-brass">Decision</div>
+              {decisionSpans.map((s, i) => (
+                <p key={`d${i}`} className="text-sm text-body">{s.speaker ? <span className="text-muted">{s.speaker}: </span> : null}{s.text}</p>
+              ))}
+            </div>
+          )}
+          {rationaleSpans.length > 0 && (
+            <div className="mt-2">
+              <div className="text-xs text-brass">Why</div>
+              {rationaleSpans.map((s, i) => (
+                <p key={`r${i}`} className="text-sm text-body">{s.speaker ? <span className="text-muted">{s.speaker}: </span> : null}{s.text}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {d.status === 'unconfirmed' && !d.dismissedAt && (
+        <ConfirmControl
+          id={d.id}
+          ownerUserId={d.ownerUserId}
+          isMeeting={isMeeting}
+          hasExternalAttendee={meeting?.attendees.some((a) => !a.isMember) ?? false}
+        />
+      )}
     </main>
   );
 }
