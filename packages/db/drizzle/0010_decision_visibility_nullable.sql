@@ -1,0 +1,11 @@
+-- D13 refinement (2026-09-03): "nobody has chosen a visibility yet" must be REPRESENTABLE, distinct
+-- from a chosen 'workspace'. Before this, a meeting decision was created carrying visibility='workspace'
+-- — a value nobody selected — so the whole workspace could read the draft the instant extraction ran,
+-- before the confirm-time choice (D13) ever happened. The guard fired too late to matter.
+--
+-- Make visibility NULLABLE. Meeting-origin decisions are now created with visibility NULL (unchosen) and
+-- stay ATTENDEE-SCOPED on every read path (queue/search/detail) until a human picks at confirm; the
+-- confirm write-gate refuses a NULL-visibility confirm (visibility_required). Non-meeting records keep the
+-- 'workspace' default (they have no tier). The existing CHECK already permits NULL (NULL passes an IN check
+-- as unknown). See PRD §21 item 12 / design doc §14 D13.
+alter table decision_record alter column visibility drop not null;

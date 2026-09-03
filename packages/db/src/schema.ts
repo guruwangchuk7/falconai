@@ -99,7 +99,7 @@ export const decisionRecord = pgTable('decision_record', {
   embeddingVersion: text('embedding_version'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   origin: text('origin').notNull().default('manual'),   // ship 2: manual | mined (queue badges "Suggested from …")
-  visibility: text('visibility').notNull().default('workspace'), // D13: workspace | attendees_only
+  visibility: text('visibility').default('workspace'), // D13: workspace | attendees_only | NULL (unchosen; how meeting decisions are created — see 0010)
   participants: jsonb('participants'),                           // D12: [{ userId, displayName }]
 });
 

@@ -228,7 +228,9 @@ export async function handleMeetingExtract(deps: CoreDeps, payload: { workspaceI
       ...(c.rationale !== undefined && { rationale: c.rationale }),
       ...(c.options !== undefined && { options: c.options }),
       ...(c.dissent !== undefined && { dissent: c.dissent }),
-      sourceRef, origin: 'meeting', visibility: 'workspace', participants: meeting.attendees, spans,
+      // visibility is left UNSET (NULL) on purpose — a meeting decision is unchosen until a human picks
+      // at confirm (D13). NULL keeps the draft attendee-scoped in the queue instead of workspace-visible.
+      sourceRef, origin: 'meeting', participants: meeting.attendees, spans,
     });
     createdTitles.add(norm);
     decisionIds.push(id);

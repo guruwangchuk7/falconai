@@ -90,7 +90,10 @@ export async function createDecision(
         embedding,
         embeddingModel: EMBEDDING_MODEL,
         embeddingVersion: EMBEDDING_VERSION,
-        visibility: input.visibility ?? 'workspace',
+        // D13: a meeting decision is created with NO visibility (NULL = unchosen) so the whole workspace
+        // can't read the draft before the confirm-time choice; it stays attendee-scoped until picked.
+        // Non-meeting records have no tier and take the 'workspace' default. An explicit input wins.
+        visibility: input.visibility ?? (input.origin === 'meeting' ? null : 'workspace'),
         participants: input.participants ?? null,
       })
       .returning({ id: schema.decisionRecord.id });
@@ -123,18 +126,17 @@ export async function confirmDecision(
 ): Promise<{ status: 'confirmed' | 'not_found' | 'already_final' | 'missing_decision' | 'visibility_required' }> {
   return deps.db.withTenant(workspaceId, async (tx) => {
     const [row] = await tx
-      .select({ status: schema.decisionRecord.status, decision: schema.decisionRecord.decision, dismissedAt: schema.decisionRecord.dismissedAt, origin: schema.decisionRecord.origin })
+      .select({ status: schema.decisionRecord.status, decision: schema.decisionRecord.decision, dismissedAt: schema.decisionRecord.dismissedAt, visibility: schema.decisionRecord.visibility })
       .from(schema.decisionRecord)
       .where(eq(schema.decisionRecord.id, id))
       .limit(1);
     if (!row) return { status: 'not_found' }; // absent, or another tenant's record (RLS hides it)
     if (row.dismissedAt || row.status !== 'unconfirmed') return { status: 'already_final' }; // confirmed/superseded/dismissed
     if (!row.decision || row.decision.trim() === '') return { status: 'missing_decision' };
-    // D13 (refined): a MEETING decision must carry an EXPLICIT visibility choice at confirm — the write
-    // gate refuses a silent default so a client-confidential decision can never be filed workspace-wide
-    // just because a reviewer didn't pick. Predicate on the typed `origin` column, NOT a sourceRef
-    // string-prefix: a security gate must not hinge on a free-text convention that can silently drift.
-    if (row.origin === 'meeting' && !visibility) return { status: 'visibility_required' };
+    // D13 (refined): the write gate reads ACTUAL STATE — a record whose visibility is still NULL (nobody
+    // has chosen; this is how meeting decisions are created) cannot be confirmed without a choice. Reading
+    // the real column, not inferring from origin, means the check can't drift from how the row was written.
+    if (row.visibility === null && !visibility) return { status: 'visibility_required' };
     await tx
       .update(schema.decisionRecord)
       .set({
@@ -236,8 +238,17 @@ export async function dismissDecision(deps: CoreDeps, workspaceId: string, id: s
 
 /** List the unconfirmed queue (US1) — awaiting human ratification, excluding dismissed. Newest first,
  *  bounded (review finding #5) so a large backlog can't load unboundedly. */
-export async function listQueue(deps: CoreDeps, workspaceId: string, limit = 100, sourceRef?: string): Promise<QueueItem[]> {
+export async function listQueue(deps: CoreDeps, workspaceId: string, limit = 100, sourceRef?: string, viewerUserId?: string): Promise<QueueItem[]> {
   return deps.db.withTenant(workspaceId, async (tx) => {
+    // Visibility tier on the QUEUE (D13): a meeting draft is created with visibility NULL (unchosen) and
+    // belongs to the room until confirmed — NULL and 'attendees_only' both fall to the attendee check, so
+    // a non-attendee's queue omits it; only 'workspace' records are visible to all. Same predicate as
+    // searchDecisions/listConfirmed. Without a viewer, show only 'workspace' (fail-closed: never a draft).
+    const tier = viewerUserId
+      ? sql`(${schema.decisionRecord.visibility} = 'workspace' or exists (
+            select 1 from jsonb_array_elements(case when jsonb_typeof(coalesce(${schema.decisionRecord.participants}, '[]'::jsonb)) = 'array' then ${schema.decisionRecord.participants} else '[]'::jsonb end) p
+            where p->>'userId' = ${viewerUserId}))`
+      : sql`${schema.decisionRecord.visibility} = 'workspace'`;
     const rows = await tx
       .select({
         id: schema.decisionRecord.id,
@@ -254,6 +265,7 @@ export async function listQueue(deps: CoreDeps, workspaceId: string, limit = 100
         eq(schema.decisionRecord.status, 'unconfirmed'),
         isNull(schema.decisionRecord.dismissedAt),
         sourceRef ? eq(schema.decisionRecord.sourceRef, sourceRef) : undefined,
+        tier,
       ))
       .orderBy(desc(schema.decisionRecord.createdAt))
       .limit(limit);

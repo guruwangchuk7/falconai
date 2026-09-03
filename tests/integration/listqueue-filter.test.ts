@@ -13,6 +13,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const M2 = resolve(HERE, '../../packages/db/drizzle/0002_personal_falcon.sql');
 
 const WS_A = '00000000-0000-0000-0000-0000000000aa';
+const ATTENDEE = '00000000-0000-0000-0000-0000000000a1';
+const OUTSIDER = '00000000-0000-0000-0000-0000000000a2';
+const attendees = [{ userId: ATTENDEE, displayName: 'Guru', isMember: true, isFalconUser: true }];
 
 let tdb: TestDb;
 let db: DbHandle;
@@ -38,12 +41,28 @@ afterAll(async () => {
   await tdb.stop();
 });
 
-it('listQueue filters by sourceRef when provided, else returns all unconfirmed', async () => {
-  await createDecision(deps, WS_A, { title: 'FromMeeting', decision: 'd', origin: 'meeting', sourceRef: 'meeting:m1' });
+it('listQueue filters by sourceRef when provided, else returns all unconfirmed (viewer is an attendee)', async () => {
+  await createDecision(deps, WS_A, { title: 'FromMeeting', decision: 'd', origin: 'meeting', sourceRef: 'meeting:m1', participants: attendees });
   await createDecision(deps, WS_A, { title: 'FromPR', decision: 'd', origin: 'suggested', sourceRef: 'pr:9' });
-  const all = await listQueue(deps, WS_A);
-  const m1 = await listQueue(deps, WS_A, 100, 'meeting:m1');
+  const all = await listQueue(deps, WS_A, 100, undefined, ATTENDEE);
+  const m1 = await listQueue(deps, WS_A, 100, 'meeting:m1', ATTENDEE);
   expect(all.length).toBeGreaterThanOrEqual(2);
   expect(m1.every((r) => r.sourceRef === 'meeting:m1')).toBe(true);
   expect(m1.some((r) => r.title === 'FromMeeting')).toBe(true);
+});
+
+it('D13: a NON-attendee’s queue OMITS a meeting draft (unchosen visibility is attendee-scoped)', async () => {
+  await createDecision(deps, WS_A, { title: 'ClientDraft', decision: 'cut scope X', origin: 'meeting', sourceRef: 'meeting:client', participants: attendees });
+  // the attendee sees the draft...
+  expect((await listQueue(deps, WS_A, 100, 'meeting:client', ATTENDEE)).some((r) => r.title === 'ClientDraft')).toBe(true);
+  // ...a workspace member who was NOT in the meeting does not — the summary never reaches them pre-confirm
+  expect((await listQueue(deps, WS_A, 100, 'meeting:client', OUTSIDER)).some((r) => r.title === 'ClientDraft')).toBe(false);
+  // ...and neither does a viewerless call (fail-closed)
+  expect((await listQueue(deps, WS_A, 100, 'meeting:client')).some((r) => r.title === 'ClientDraft')).toBe(false);
+});
+
+it('a workspace-visible draft (manual/PR) shows to everyone, attendee or not', async () => {
+  await createDecision(deps, WS_A, { title: 'InternalPR', decision: 'd', origin: 'suggested', sourceRef: 'pr:internal' });
+  expect((await listQueue(deps, WS_A, 100, 'pr:internal', OUTSIDER)).some((r) => r.title === 'InternalPR')).toBe(true);
+  expect((await listQueue(deps, WS_A, 100, 'pr:internal')).some((r) => r.title === 'InternalPR')).toBe(true);
 });

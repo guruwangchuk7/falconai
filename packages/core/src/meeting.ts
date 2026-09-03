@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, lt, sql } from 'drizzle-orm';
 import { schema } from '@falcon/db';
 import type { CoreDeps } from './deps.js';
 
@@ -84,6 +84,35 @@ export async function setTranscriptRetainedUntil(deps: MeetingDeps, workspaceId:
       .set({ transcriptRetainedUntil: until })
       .where(and(eq(schema.meeting.workspaceId, workspaceId), eq(schema.meeting.id, meetingId)));
   });
+}
+
+/**
+ * Reap working-copy transcripts whose TTL has elapsed (D6/D7). The 24–72h working-copy TTL is a promise
+ * in the consent line ("the transcript is deleted after processing") — but a deferred or failed extraction
+ * never reaches the extraction-time delete, so without this a full transcript can sit past its TTL
+ * indefinitely with no alarm. This periodic sweep makes the promise actually true. Iterates workspaces via
+ * rootDb (the workspace LIST is not tenant-scoped, like pollAll), then deletes per-tenant so RLS still
+ * guards each write; also nulls the meeting's transcript_retained_until so a reader sees "discarded" (D6).
+ * Returns the number of transcripts reaped.
+ */
+export async function reapExpiredWorkingCopies(deps: MeetingDeps, now: Date = new Date()): Promise<number> {
+  const workspaces = await deps.db.rootDb.select({ id: schema.workspace.id }).from(schema.workspace);
+  let total = 0;
+  for (const ws of workspaces) {
+    const reaped = await deps.db.withTenant(ws.id, async (tx) => {
+      const deleted = await tx.delete(schema.meetingTranscript)
+        .where(lt(schema.meetingTranscript.expiresAt, now))
+        .returning({ meetingId: schema.meetingTranscript.meetingId });
+      for (const d of deleted) {
+        await tx.update(schema.meeting)
+          .set({ transcriptRetainedUntil: null })
+          .where(and(eq(schema.meeting.workspaceId, ws.id), eq(schema.meeting.id, d.meetingId)));
+      }
+      return deleted.length;
+    });
+    total += reaped;
+  }
+  return total;
 }
 
 function toMeetingRow(r: typeof schema.meeting.$inferSelect): MeetingRow {

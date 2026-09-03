@@ -81,7 +81,7 @@ it('extracts a meeting decision with spans, records ledger=suggested, deletes wo
     (await tx.select().from(schema.decisionRecord).where(eq(schema.decisionRecord.id, out.decisionIds[0]!)).limit(1))[0]);
   expect(rec!.origin).toBe('meeting');
   expect(rec!.sourceRef).toBe(`meeting:${meetingId}`);
-  expect(rec!.visibility).toBe('workspace');
+  expect(rec!.visibility).toBeNull(); // D13: unchosen until a human picks at confirm — NOT workspace-visible in the queue meanwhile
   expect(rec!.status).toBe('unconfirmed'); // never auto-confirms (R23)
 
   // Read as superuser (tdb.admin) — bypasses RLS. This only checks span persistence count, not

@@ -18,7 +18,7 @@ export default async function DecisionsPage({ searchParams }: { searchParams: Pr
   const showConfirmed = !q && !meetingId;
   const [results, queue, meeting, confirmed] = await Promise.all([
     q ? searchDecisions(deps(), session.workspaceId, q, 10, 180, undefined, session.userId) : Promise.resolve([]),
-    listQueue(deps(), session.workspaceId, 100, meetingSourceRef),
+    listQueue(deps(), session.workspaceId, 100, meetingSourceRef, session.userId),
     meetingId ? getMeeting(deps(), session.workspaceId, meetingId) : Promise.resolve(null),
     showConfirmed ? listConfirmed(deps(), session.workspaceId, 100, session.userId) : Promise.resolve([]),
   ]);

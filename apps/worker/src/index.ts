@@ -2,7 +2,7 @@ import { Worker } from 'bullmq';
 import { getDb } from '@falcon/db';
 import { createLlmProviders } from '@falcon/llm';
 import { createSecretStore } from '@falcon/secrets';
-import { EXTRACTOR_VERSION, type CoreDeps } from '@falcon/core';
+import { EXTRACTOR_VERSION, reapExpiredWorkingCopies, type CoreDeps } from '@falcon/core';
 import { conn, defaultJobOpts, maintenanceQueue, meetingExtractQueue, meetingExtractJobId, mineQueue, mineJobId, type DigestJob, type IndexJob, type MeetingExtractJob, type MineJob, type SyncJob } from '@falcon/queue';
 import { captureException, flushObservability, initObservability } from '@falcon/observability';
 import { handleDigest, handleIndex, handleMeetingExtract, handleMine, handleSync, msUntilNextUtcMidnight, pollAll, pollDigests } from './handlers.js';
@@ -60,6 +60,7 @@ const workers = [
   new Worker('maintenance', async (job) => {
     if (job.name === 'poll-sync') await pollAll(deps);
     else if (job.name === 'poll-digests') await pollDigests(deps);
+    else if (job.name === 'reap-working-copies') await reapExpiredWorkingCopies(deps);
   }, { connection }),
 ];
 
@@ -73,6 +74,8 @@ for (const w of workers) {
 // Repeatable maintenance: backfill poll every 10 min; nightly digests at 03:00.
 await maintenanceQueue().add('poll-sync', {}, { repeat: { pattern: '*/10 * * * *' }, ...defaultJobOpts });
 await maintenanceQueue().add('poll-digests', {}, { repeat: { pattern: '0 3 * * *' }, ...defaultJobOpts });
+// Enforce the working-copy TTL (D6 consent promise) — delete transcripts past expires_at every 30 min.
+await maintenanceQueue().add('reap-working-copies', {}, { repeat: { pattern: '*/30 * * * *' }, ...defaultJobOpts });
 
 console.log('falcon worker started: sync, index, digest, mine, meeting-extract, maintenance');
 

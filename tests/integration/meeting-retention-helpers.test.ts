@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { createDb, type DbHandle } from '@falcon/db';
 import {
   getWorkspaceRetentionDays, setWorkingCopyExpiry, createMeeting, persistWorkingCopy, readWorkingCopy,
+  reapExpiredWorkingCopies, getMeeting, setTranscriptRetainedUntil,
   type MeetingDeps,
 } from '@falcon/core';
 import { startTestDb, type TestDb } from '../support/pg.js';
@@ -41,4 +42,20 @@ it('setWorkingCopyExpiry extends the working-copy TTL without touching utterance
   await setWorkingCopyExpiry(deps, WS_A, meetingId, later);
   const wc = await readWorkingCopy(deps, WS_A, meetingId);
   expect(wc!.utterances).toHaveLength(1); // utterances intact
+});
+
+it('reapExpiredWorkingCopies deletes past-TTL transcripts (the consent promise) and leaves live ones', async () => {
+  // expired: TTL already passed (a deferred/failed extraction that never hit the delete)
+  const expired = await createMeeting(deps, WS_A, { sessionId: randomUUID(), attendees: [] });
+  await persistWorkingCopy(deps, WS_A, expired.meetingId, [{ idx: 0, speaker: 'a', userId: 'u', text: 'secret', tsMs: 1 }], new Date(Date.now() - 60_000));
+  await setTranscriptRetainedUntil(deps, WS_A, expired.meetingId, new Date(Date.now() + 86400_000));
+  // live: TTL still in the future
+  const live = await createMeeting(deps, WS_A, { sessionId: randomUUID(), attendees: [] });
+  await persistWorkingCopy(deps, WS_A, live.meetingId, [{ idx: 0, speaker: 'a', userId: 'u', text: 'keep', tsMs: 1 }], new Date(Date.now() + 3600_000));
+
+  const reaped = await reapExpiredWorkingCopies(deps);
+  expect(reaped).toBeGreaterThanOrEqual(1);
+  expect(await readWorkingCopy(deps, WS_A, expired.meetingId)).toBeNull();       // gone
+  expect((await getMeeting(deps, WS_A, expired.meetingId))!.transcriptRetainedUntil).toBeNull(); // marked discarded (D6)
+  expect((await readWorkingCopy(deps, WS_A, live.meetingId))!.utterances).toHaveLength(1);        // survives
 });
