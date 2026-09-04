@@ -19,7 +19,7 @@ export default async function DigestPage() {
 
   return (
     <main>
-      <h1 className="mb-2 text-xl font-medium text-ink">Your Work Digest</h1>
+      <h1 className="mb-2 font-display text-[24px] font-medium text-ink">Your Work Digest</h1>
       <p className="mb-4 text-sm text-muted">
         What Falcon thinks you have been working on. Edit it if it is wrong — your version is what
         gets used.

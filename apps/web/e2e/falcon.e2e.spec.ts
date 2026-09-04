@@ -13,7 +13,8 @@ test('authed: ask Falcon → a grounded, cited answer renders', async ({ page, c
   await context.addCookies([await mintSessionCookie(UA, A, BASE_URL)]);
 
   await page.goto('/falcon');
-  await expect(page.getByRole('heading', { name: 'Ask Falcon' })).toBeVisible();
+  // The page leads with a time-of-day greeting now; assert the stable intro copy + ask control instead.
+  await expect(page.getByText('Ask about your own work', { exact: false })).toBeVisible();
 
   await page.getByPlaceholder('e.g. what did I do for authentication?').fill('what did I do for auth?');
   await page.getByRole('button', { name: 'Ask', exact: true }).click();
@@ -28,7 +29,7 @@ test('authed: ask Falcon → a grounded, cited answer renders', async ({ page, c
   // History view: the conversation we just created is listed and opens to show the turn.
   await page.getByRole('button', { name: 'History' }).click();
   await page.getByRole('button', { name: /what did I do for auth/ }).click();
-  await expect(page.getByText('You asked:')).toBeVisible();
+  await expect(page.getByText('You asked', { exact: false })).toBeVisible();
   await expect(page.getByText('You implemented the GitHub auth callback.')).toBeVisible();
 });
 
