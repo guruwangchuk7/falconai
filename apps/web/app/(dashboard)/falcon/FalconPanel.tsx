@@ -89,12 +89,13 @@ function CiteDot() {
 }
 
 // Grounded-in-real-work prompts. Every one queries the user's own synced artifacts — no fabricated
-// data, just good entry points into what Falcon actually knows.
+// data, just good entry points into what Falcon actually knows. Decision-led (the hero use case),
+// then work/eng, so non-engineer testers see themselves in at least half the starters.
 const STARTERS = [
+  'What decisions have we made recently?',
   'What did I work on this week?',
   'What did I do for authentication?',
-  'Summarize my recent pull requests',
-  'What decisions have I made recently?',
+  'What decisions are waiting for me to confirm?',
 ];
 
 export function FalconPanel() {

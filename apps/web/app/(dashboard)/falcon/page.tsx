@@ -21,8 +21,8 @@ export default async function FalconPage() {
     <main>
       <h1 className="font-display text-[32px] font-medium leading-tight tracking-[-0.2px] text-ink">{hello}</h1>
       <p className="mt-3 text-[15px] text-muted">
-        Ask about your own work. Falcon answers only from what it has actually synced, and shows the
-        source for every claim — if it can&apos;t ground an answer, it says so.
+        Ask about your work and your team&apos;s decisions. Falcon answers only from what it has actually
+        synced, shows the source for every claim, and tells you when it can&apos;t ground an answer.
       </p>
       <div className="mt-8">
         <FalconPanel />

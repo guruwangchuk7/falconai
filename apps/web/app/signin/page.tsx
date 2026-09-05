@@ -47,7 +47,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
 
           <h1 className="mt-7 font-display text-[24px] font-medium leading-tight text-ink">Sign in to Falcon</h1>
           <p className="mt-2 text-[14px] text-muted">
-            A personal AI that remembers your work — and shows the source for every claim.
+            Your work memory — what your team discussed, decided, and shipped, with the source behind every answer.
           </p>
 
           {error && (
