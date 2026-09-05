@@ -64,7 +64,7 @@ export function CommitmentList({ items, show }: { items: CommitmentView[]; show:
           <ul className="divide-y divide-hairline">
             {group.map((it) => (
               <li key={it.id} className="flex items-start justify-between gap-3 py-3.5">
-                <div className="min-w-0">
+                <div className="min-w-0 max-w-3xl">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`text-[15px] ${it.status === 'done' ? 'text-muted line-through' : 'text-ink'}`}>{it.text}</span>
                     {it.dueHint && (

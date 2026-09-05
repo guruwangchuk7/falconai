@@ -54,7 +54,7 @@ export default async function CommitmentsPage({ searchParams }: { searchParams: 
         })}
       </div>
 
-      <div className="mt-6 max-w-2xl">
+      <div className="mt-6">
         <CommitmentList items={rows} show={show} />
       </div>
     </main>
