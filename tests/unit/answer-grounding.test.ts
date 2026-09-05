@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseClaims, groundClaims, parseTimeWindow, citationUrl, emptyAnswerMessage } from '@falcon/core';
+import { parseClaims, groundClaims, parseTimeWindow, citationUrl, claimTier, emptyAnswerMessage } from '@falcon/core';
 import type { RetrievedItem } from '@falcon/core';
 
 describe('parseTimeWindow', () => {
@@ -121,6 +121,38 @@ describe('groundClaims (verify-then-drop)', () => {
     const { claims } = groundClaims([{ text: 'we chose Deepgram', citations: [1] }], [decisionItem]);
     expect(claims[0]!.citations[0]!.url).toBe('/decisions/dec-7');
     expect(claims[0]!.citations[0]!.externalRef).toBe('Adopt Deepgram');
+    expect(claims[0]!.tier).toBe('confirmed'); // decision-grounded → Confirmed badge
+  });
+
+  it('propagates trustTier onto citations and tags a comment-only claim "from_comment"', () => {
+    const comment: RetrievedItem = { ...item(1), type: 'review_comment', trustTier: 'untrusted' };
+    const { claims } = groundClaims([{ text: 'someone said X', citations: [1] }], [comment]);
+    expect(claims[0]!.citations[0]!.trustTier).toBe('untrusted');
+    expect(claims[0]!.tier).toBe('from_comment');
+  });
+
+  it('leaves a plain trusted-PR claim un-badged (no noise)', () => {
+    const { claims } = groundClaims([{ text: 'did X', citations: [1] }], [item(1)]);
+    expect(claims[0]!.tier).toBeUndefined();
+  });
+});
+
+describe('claimTier (provenance-strength, deterministic — never a model score)', () => {
+  const cite = (type: string, trustTier: string) => ({ type, trustTier });
+  it('confirmed when any citation is a (confirmed) decision — even mixed with a comment', () => {
+    expect(claimTier([cite('decision', 'trusted'), cite('review_comment', 'untrusted')])).toBe('confirmed');
+  });
+  it('from_comment only when EVERY citation is untrusted', () => {
+    expect(claimTier([cite('review_comment', 'untrusted'), cite('review_comment', 'untrusted')])).toBe('from_comment');
+  });
+  it('no badge when a trusted source is present alongside a comment', () => {
+    expect(claimTier([cite('pr', 'trusted'), cite('review_comment', 'untrusted')])).toBeNull();
+  });
+  it('no badge for a plain trusted PR/commit', () => {
+    expect(claimTier([cite('pr', 'trusted')])).toBeNull();
+  });
+  it('null for no citations', () => {
+    expect(claimTier([])).toBeNull();
   });
 });
 
