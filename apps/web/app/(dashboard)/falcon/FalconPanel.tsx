@@ -19,22 +19,38 @@ interface AskResponse {
   conversationId?: string;
 }
 
-/** The four-state decision boundary (US2). Surfaces an UNCONFIRMED candidate as a neutral status line
- *  — existence + source pointer + a link to the queue — and NEVER its content. */
+/** The four-state decision boundary (US2). Surfaces (a) a SUPERSEDED-lineage note when the answer is
+ *  grounded on a confirmed decision that replaced an earlier one — so a reversed/updated decision is
+ *  never presented as if it had no history (F10.1, the CTO's "did we change this?" ask); and (b) an
+ *  UNCONFIRMED candidate as a neutral status line — existence + source pointer + queue link, NEVER its
+ *  content. Both can co-occur ("we decided X, which changed an earlier call, and there's a new proposal"). */
 function DecisionStatusNote({ status }: { status: DecisionStatus }) {
   const pending = status.proposed ?? status.pendingChange;
-  if (!pending) return null;
-  const refs = pending.sourceRefs.filter((r): r is string => !!r);
+  const superseded = status.settled?.changed ? status.settled : undefined;
+  if (!pending && !superseded) return null;
+
+  const refs = pending?.sourceRefs.filter((r): r is string => !!r) ?? [];
   const from = refs.length ? ` (from ${refs.join(', ')})` : '';
   const lead = status.proposed
     ? "This isn't settled yet — there's an unconfirmed decision candidate"
     : 'Heads up: an unratified change to this decision has been proposed';
-  const plural = pending.count > 1 ? `${pending.count} candidates` : 'a candidate';
+  const plural = pending && pending.count > 1 ? `${pending.count} candidates` : 'a candidate';
+
   return (
-    <p className="mt-3 rounded-xl border border-hairline bg-surface-strong/50 p-3 text-[13.5px] text-body">
-      {lead}{pending.count > 1 ? ` — ${plural}` : ''}{from}.{' '}
-      <a href={pending.queueLink} className="font-medium underline decoration-dotted underline-offset-2 hover:text-ink">Open the decision queue</a>
-    </p>
+    <div className="mt-3 space-y-2">
+      {superseded && (
+        <p className="rounded-xl border border-hairline bg-surface-strong/50 p-3 text-[13.5px] text-body">
+          This reflects a decision that replaced an earlier one — you&apos;re seeing the current version.{' '}
+          <a href={`/decisions/${superseded.decisionId}`} className="font-medium underline decoration-dotted underline-offset-2 hover:text-ink">See what changed</a>
+        </p>
+      )}
+      {pending && (
+        <p className="rounded-xl border border-hairline bg-surface-strong/50 p-3 text-[13.5px] text-body">
+          {lead}{pending.count > 1 ? ` — ${plural}` : ''}{from}.{' '}
+          <a href={pending.queueLink} className="font-medium underline decoration-dotted underline-offset-2 hover:text-ink">Open the decision queue</a>
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -259,6 +275,10 @@ export function FalconPanel() {
               </button>
             ))}
           </div>
+          <p className="mt-4 max-w-xl text-[12.5px] leading-relaxed text-muted-soft">
+            Falcon only answers from sources you&apos;ve connected, and only from work you have access to —
+            it can&apos;t surface anything you couldn&apos;t open yourself.
+          </p>
         </div>
       )}
 

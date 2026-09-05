@@ -14,7 +14,7 @@ test('authed: ask Falcon → a grounded, cited answer renders', async ({ page, c
 
   await page.goto('/falcon');
   // The page leads with a time-of-day greeting now; assert the stable intro copy + ask control instead.
-  await expect(page.getByText('Ask about your own work', { exact: false })).toBeVisible();
+  await expect(page.getByText('Ask about your work and your team', { exact: false })).toBeVisible();
 
   await page.getByPlaceholder('e.g. what did I do for authentication?').fill('what did I do for auth?');
   await page.getByRole('button', { name: 'Ask', exact: true }).click();
