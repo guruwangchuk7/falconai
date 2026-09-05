@@ -15,6 +15,7 @@ interface AskResponse {
   claims: Claim[];
   dataAsOf: string | null;
   decisionStatus?: DecisionStatus;
+  syncWindowNote?: string;
   message?: string;
   conversationId?: string;
 }
@@ -322,6 +323,12 @@ export function FalconPanel() {
         </div>
       )}
 
+      {answer?.syncWindowNote && (
+        <p className="mt-3 flex items-start gap-2 rounded-xl border border-hairline bg-surface-strong/50 p-3 text-[13.5px] text-body">
+          <span aria-hidden>⏳</span>
+          <span>{answer.syncWindowNote}</span>
+        </p>
+      )}
       {answer?.decisionStatus && <DecisionStatusNote status={answer.decisionStatus} />}
     </div>
   );

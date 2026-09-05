@@ -1,4 +1,5 @@
 import type { ChatMessage } from '@falcon/llm';
+import { ROLLING_WINDOW_DAYS } from '@falcon/config';
 import type { CoreDeps } from './deps.js';
 import { retrieve, type RetrievedItem } from './retrieve.js';
 import { searchDecisions, matchUnconfirmedCandidates } from './decisions.js';
@@ -49,6 +50,9 @@ export interface Answer {
   modelVersion: string;
   dataAsOf: string | null; // ISO; latest sync among cited artifacts (freshness, FR-014)
   degraded?: { reason: 'sync_stale' | 'source_disconnected'; sources: string[] };
+  /** Present when the question asked for a range older than we've actually synced (ROLLING_WINDOW_DAYS).
+   *  Surfaced so the user isn't silently handed only the last ~30 days as if it were the full answer. */
+  syncWindowNote?: string;
   /** Decision Memory four-state boundary (US2). Present when a relevant confirmed decision grounded
    *  the answer and/or a relevant UNCONFIRMED candidate exists. Unconfirmed content never appears here
    *  — only metadata (count, source pointers, queue link). Absent = the `none` state. */
@@ -164,18 +168,26 @@ export function parseTimeWindow(question: string, now: Date): { since?: string; 
   const dayMs = 86_400_000;
   const todayStart = startOfUTCDay(now);
 
+  const rolling = (days: number) => ({ since: new Date(now.getTime() - days * dayMs).toISOString(), until: now.toISOString() });
+
   if (/\byesterday\b/.test(q)) {
     return { since: new Date(todayStart.getTime() - dayMs).toISOString(), until: todayStart.toISOString() };
   }
   if (/\btoday\b/.test(q)) {
     return { since: todayStart.toISOString(), until: now.toISOString() };
   }
-  if (/\b(this|past|last)\s+(week)\b|\blast\s+7\s+days\b/.test(q)) {
-    return { since: new Date(now.getTime() - 7 * dayMs).toISOString(), until: now.toISOString() };
+  // N-quantified windows FIRST, so "last 3 months" doesn't collapse into the bare "month" (30d) rule.
+  // Months are treated as rolling 30-day units (avoids calendar-boundary ambiguity) — good enough for a
+  // work assistant; a quarter is 90 days. (Fixes the silently-ignored multi-month query — R "3 months".)
+  let m: RegExpMatchArray | null;
+  if ((m = q.match(/\blast\s+(\d{1,2})\s+months?\b/)) || (m = q.match(/\b(\d{1,2})\s+months?\s+(?:ago|back)\b/))) {
+    return rolling(Number(m[1]) * 30);
   }
-  if (/\b(this|past|last)\s+(month)\b|\blast\s+30\s+days\b/.test(q)) {
-    return { since: new Date(now.getTime() - 30 * dayMs).toISOString(), until: now.toISOString() };
-  }
+  if (/\b(this|past|last)\s+quarter\b/.test(q)) return rolling(90);
+  if ((m = q.match(/\blast\s+(\d{1,3})\s+weeks?\b/))) return rolling(Number(m[1]) * 7);
+  if ((m = q.match(/\blast\s+(\d{1,3})\s+days?\b/)) && !/\blast\s+(7|30)\s+days?\b/.test(q)) return rolling(Number(m[1]));
+  if (/\b(this|past|last)\s+(week)\b|\blast\s+7\s+days\b/.test(q)) return rolling(7);
+  if (/\b(this|past|last)\s+(month)\b|\blast\s+30\s+days\b/.test(q)) return rolling(30);
   return {};
 }
 
@@ -194,17 +206,26 @@ export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promis
   let supersedingIds = new Set<string>();
   const decisionStatusFor = (claims: Claim[]): DecisionStatus | undefined =>
     resolveDecisionStatus(claims, unconfirmedMatches, supersedingIds);
+  // A time phrase constrains retrieval by date ("today" / "this week" / "last 3 months"). When the asked
+  // range reaches back further than we've actually synced, say so — silently returning only the last
+  // ~30 days as if it were the full answer is the exact skeptic-losing truncation.
+  const now = new Date();
+  const window = parseTimeWindow(input.question, now);
+  const syncWindowNote =
+    window.since && now.getTime() - new Date(window.since).getTime() > ROLLING_WINDOW_DAYS * 86_400_000
+      ? `You asked about a longer range, but Falcon has only synced about the last ${ROLLING_WINDOW_DAYS} days of your work so far — older items aren't indexed yet.`
+      : undefined;
+  const windowNote = syncWindowNote ? { syncWindowNote } : {};
+
   const noAnswer = (degraded?: Answer['degraded']): Answer => {
     const decisionStatus = decisionStatusFor([]);
     return {
       status: 'no_grounded_answer', claims: [], generatedText: null, dataAsOf: null, ...base,
-      ...(degraded ? { degraded } : {}), ...(decisionStatus ? { decisionStatus } : {}),
+      ...(degraded ? { degraded } : {}), ...(decisionStatus ? { decisionStatus } : {}), ...windowNote,
     };
   };
 
   // 1. Retrieve ACL/tenant-scoped candidates (the only source of truth for grounding).
-  //    A time phrase in the question ("today", "this week") constrains by date, not just semantics.
-  const window = parseTimeWindow(input.question, new Date());
   const { items: artifactItems, degraded } = await retrieve(deps, {
     workspaceId: input.workspaceId,
     requesterUserId: input.requesterUserId,
@@ -280,5 +301,6 @@ export async function answerQuestion(deps: CoreDeps, input: AnswerInput): Promis
     ...base,
     ...(degraded ? { degraded } : {}),
     ...(decisionStatus ? { decisionStatus } : {}),
+    ...windowNote,
   };
 }
