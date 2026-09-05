@@ -187,16 +187,23 @@ export async function supersedeDecision(
       .where(eq(schema.decisionRecord.id, args.newRecordId))
       .limit(1);
     if (!nw || nw.status !== 'confirmed') return { superseded: false }; // only a confirmed record can supersede
-    await tx
-      .update(schema.decisionRecord)
-      .set({ supersedesId: args.supersedesId })
-      .where(eq(schema.decisionRecord.id, args.newRecordId));
+    // Flip the old record FIRST and gate on winning that atomic update. Only then write the back-pointer.
+    // Doing the pointer-write unconditionally (as before) meant a second supersede of an ALREADY-superseded
+    // record still stamped newRecord.supersedesId even though the flip no-op'd — leaving two records
+    // pointing at the same predecessor (a forked chain) that a forward walk would silently mis-resolve.
+    // The `status='confirmed'` predicate also makes concurrent supersedes of the same record race-safe:
+    // exactly one UPDATE matches the row, so exactly one caller links the chain.
     const res = await tx
       .update(schema.decisionRecord)
       .set({ status: 'superseded' })
       .where(and(eq(schema.decisionRecord.id, args.supersedesId), eq(schema.decisionRecord.status, 'confirmed')))
       .returning({ id: schema.decisionRecord.id });
-    return { superseded: res.length > 0 };
+    if (res.length === 0) return { superseded: false }; // old record absent or already superseded → no link
+    await tx
+      .update(schema.decisionRecord)
+      .set({ supersedesId: args.supersedesId })
+      .where(eq(schema.decisionRecord.id, args.newRecordId));
+    return { superseded: true };
   });
 }
 

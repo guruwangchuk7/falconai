@@ -123,6 +123,27 @@ it('US3: supersede flips the old record out of retrieval and links the chain bot
   expect((await supersedeDecision(deps, A, { newRecordId: newId, supersedesId: oldId })).superseded).toBe(false); // idempotent
 });
 
+it('US3: a second supersede of an already-superseded record does NOT branch the chain (no dangling pointer)', async () => {
+  // Regression: supersedeDecision must not write newRecord.supersedesId unless it actually won the
+  // old-record flip. Otherwise two records can both point at the same predecessor -> the chain forks
+  // and a forward walk (getDecision.supersededById / the timeline) silently picks one branch.
+  const { id: oldId } = await createDecision(deps, A, { title: 'Cache: Memcached', decision: 'Memcached' });
+  await confirmDecision(deps, A, oldId, UA);
+  const { id: first } = await createDecision(deps, A, { title: 'Cache: Redis', decision: 'Redis' });
+  await confirmDecision(deps, A, first, UA);
+  const { id: second } = await createDecision(deps, A, { title: 'Cache: KeyDB', decision: 'KeyDB' });
+  await confirmDecision(deps, A, second, UA);
+
+  expect((await supersedeDecision(deps, A, { newRecordId: first, supersedesId: oldId })).superseded).toBe(true);
+  // `second` also tries to supersede the SAME old record — the flip already happened, so this must fail
+  // AND leave `second` unlinked (not carrying a dangling supersedesId to the old record).
+  expect((await supersedeDecision(deps, A, { newRecordId: second, supersedesId: oldId })).superseded).toBe(false);
+
+  expect((await getDecision(deps, A, oldId))!.supersededById).toBe(first); // single successor — no fork
+  expect((await getDecision(deps, A, second))!.supersedesId).toBeNull();   // loser wrote no pointer
+  expect((await getDecision(deps, A, first))!.supersedesId).toBe(oldId);
+});
+
 it('US4: dismiss tombstones an unconfirmed candidate; it never grounds or surfaces again (FR-005)', async () => {
   const { id } = await createDecision(deps, A, { title: 'Maybe adopt Bun', decision: 'Bun?', sourceRef: '#99' });
   expect((await listQueue(deps, A)).map((q) => q.id)).toContain(id);
