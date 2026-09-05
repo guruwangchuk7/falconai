@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { schema, type TenantTx } from '@falcon/db';
 import { EMBEDDING_MODEL, EMBEDDING_VERSION } from '@falcon/llm';
 import { DECISION_RELEVANCE_MAX_DISTANCE } from '@falcon/config';
@@ -483,6 +483,69 @@ export function buildTimeline(ordered: StructuralNode[], content: Map<string, Ti
       date: n.confirmedAt ? n.confirmedAt.toISOString() : null, confirmedByName: c.confirmedByName,
       origin: c.origin, status: n.status, isCurrent, isViewed: n.id === entryId,
     };
+  });
+}
+
+const MAX_CHAIN = 50;
+
+/**
+ * Full supersession lineage for a decision, ordered oldest -> current, ACL-safe. TWO PASSES so masked
+ * content never crosses the DB boundary:
+ *   1. STRUCTURAL — a recursive CTE collects the whole connected chain (both directions) selecting only
+ *      pointers/metadata: id, supersedes_id, visibility, participants, confirmed_at, origin, status. No
+ *      title/decision/rationale. decision_record RLS is tenant-only, so reading these for an
+ *      attendees_only row is legitimate (a pointer is not content). depth<MAX_CHAIN bounds any cycle;
+ *      the outer DISTINCT (no depth column) dedups nodes reached by multiple paths.
+ *   2. CONTENT — fetch title/decision/rationale + confirmer name ONLY for ids the viewer may see
+ *      (canSeeVisibility). Ids absent from this set render as masked placeholders.
+ * Returns [] if the record is absent, length 1 (caller shows no timeline) if it has no chain.
+ */
+export async function getDecisionTimeline(
+  deps: CoreDeps, workspaceId: string, id: string, viewerUserId?: string,
+): Promise<TimelineNode[]> {
+  return deps.db.withTenant(workspaceId, async (tx) => {
+    // Pass 1: structural (no content columns).
+    const res = await tx.execute(sql`
+      with recursive chain as (
+        select id, supersedes_id, visibility, participants, confirmed_at, origin, status, 1 as depth
+        from decision_record where id = ${id}
+        union
+        select d.id, d.supersedes_id, d.visibility, d.participants, d.confirmed_at, d.origin, d.status, c.depth + 1
+        from decision_record d
+        join chain c on (d.id = c.supersedes_id or d.supersedes_id = c.id)
+        where c.depth < ${MAX_CHAIN}
+      )
+      select distinct id, supersedes_id, visibility, participants, confirmed_at, origin, status from chain
+    `);
+    const rows = (res as unknown as Array<Record<string, unknown>>).map((r): StructuralNode => ({
+      id: r.id as string,
+      supersedesId: (r.supersedes_id as string | null) ?? null,
+      visibility: (r.visibility as string | null) ?? null,
+      participants: r.participants ?? null,
+      confirmedAt: r.confirmed_at ? new Date(r.confirmed_at as string) : null,
+      origin: (r.origin as string) ?? 'manual',
+      status: (r.status as string) ?? 'confirmed',
+    }));
+    if (rows.length === 0) return [];
+
+    const { ordered, forked } = orderChain(rows);
+    if (forked) console.warn(`[decision-timeline] forked chain at decision ${id} (${workspaceId}) — ordering deterministically`);
+
+    // Pass 2: content for visible ids only — masked ids are never in the select.
+    const visibleIds = ordered.filter((n) => canSeeVisibility(n.visibility, n.participants, viewerUserId)).map((n) => n.id);
+    const content = new Map<string, TimelineContent>();
+    if (visibleIds.length > 0) {
+      const crows = await tx
+        .select({
+          id: schema.decisionRecord.id, title: schema.decisionRecord.title, decision: schema.decisionRecord.decision,
+          rationale: schema.decisionRecord.rationale, origin: schema.decisionRecord.origin, confirmedByName: schema.users.name,
+        })
+        .from(schema.decisionRecord)
+        .leftJoin(schema.users, eq(schema.users.id, schema.decisionRecord.confirmedBy))
+        .where(inArray(schema.decisionRecord.id, visibleIds));
+      for (const c of crows) content.set(c.id, { id: c.id, title: c.title, decision: c.decision, rationale: c.rationale, origin: c.origin, confirmedByName: c.confirmedByName ?? null });
+    }
+    return buildTimeline(ordered, content, id);
   });
 }
 
