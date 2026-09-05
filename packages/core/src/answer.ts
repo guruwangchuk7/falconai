@@ -21,6 +21,7 @@ export interface Citation {
   type: string;
   url: string | null; // openable link to the source (null when not resolvable → UI shows a label)
   trustTier: string; // trusted | mixed | untrusted (§14) — drives the provenance-strength badge
+  snippet: string; // the relevant retrieved passage — lets the UI show evidence inline, not just a link
 }
 
 /** Build an openable provenance URL from an artifact's source + repo/project + ref, so a citation
@@ -140,7 +141,7 @@ export function groundClaims(
       const isDecision = it.source === 'decision';
       const url = isDecision ? `/decisions/${it.artifactId}` : citationUrl(it);
       const externalRef = isDecision ? (it.title ?? 'decision') : it.externalRef;
-      citations.push({ artifactId: it.artifactId, externalRef, title: it.title, type: it.type, url, trustTier: it.trustTier });
+      citations.push({ artifactId: it.artifactId, externalRef, title: it.title, type: it.type, url, trustTier: it.trustTier, snippet: it.snippet });
       citedIso.push(it.lastSyncedAt);
     }
     if (c.text.trim() && citations.length > 0) {
