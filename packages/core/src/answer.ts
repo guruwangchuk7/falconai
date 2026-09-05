@@ -130,6 +130,30 @@ export function groundClaims(
   return { claims, citedIso };
 }
 
+/** Human-facing source names for the honest empty-answer message. */
+function prettyProvider(p: string): string {
+  if (p === 'github') return 'GitHub';
+  if (p === 'linear') return 'Linear';
+  if (p === 'jira') return 'Jira';
+  return p.charAt(0).toUpperCase() + p.slice(1);
+}
+
+/**
+ * Honest "nothing found" message that NAMES what was actually searched (round-1 Tester #1: "searched
+ * your GitHub PRs + Linear, found no evidence" earns a skeptic; a bare "nothing found" doesn't). Pure +
+ * unit-tested. Decisions are always in scope (Decision Memory), so they're named even with no
+ * integrations; with none connected, we say so and point at Integrations rather than imply we searched
+ * work that was never synced.
+ */
+export function emptyAnswerMessage(connectedProviders: readonly string[]): string {
+  const names = [...new Set(connectedProviders)].map(prettyProvider);
+  if (names.length === 0) {
+    return 'I searched your decisions but found nothing that grounds an answer — and no work sources are connected yet. Connect GitHub or Linear from Integrations so Falcon has your synced work to search.';
+  }
+  const list = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+  return `I searched your ${list} and your decisions, but found nothing that grounds an answer to this.`;
+}
+
 /** How many top-ranked artifacts the omission diff inspects (F7.2 shadow). */
 export const OMISSION_SHADOW_TOP_N = 3;
 

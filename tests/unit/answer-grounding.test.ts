@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseClaims, groundClaims, parseTimeWindow, citationUrl } from '@falcon/core';
+import { parseClaims, groundClaims, parseTimeWindow, citationUrl, emptyAnswerMessage } from '@falcon/core';
 import type { RetrievedItem } from '@falcon/core';
 
 describe('parseTimeWindow', () => {
@@ -121,6 +121,28 @@ describe('groundClaims (verify-then-drop)', () => {
     const { claims } = groundClaims([{ text: 'we chose Deepgram', citations: [1] }], [decisionItem]);
     expect(claims[0]!.citations[0]!.url).toBe('/decisions/dec-7');
     expect(claims[0]!.citations[0]!.externalRef).toBe('Adopt Deepgram');
+  });
+});
+
+describe('emptyAnswerMessage (honest "nothing found" — names what was searched)', () => {
+  it('names no sources + prompts to connect when nothing is connected', () => {
+    const m = emptyAnswerMessage([]);
+    expect(m).toMatch(/no work sources are connected/i);
+    expect(m).toMatch(/Integrations/);
+  });
+  it('names a single connected source with a friendly label', () => {
+    expect(emptyAnswerMessage(['github'])).toBe(
+      'I searched your GitHub and your decisions, but found nothing that grounds an answer to this.',
+    );
+  });
+  it('lists two sources with "and"', () => {
+    expect(emptyAnswerMessage(['github', 'linear'])).toContain('GitHub and Linear');
+  });
+  it('lists three sources with commas + a final "and"', () => {
+    expect(emptyAnswerMessage(['github', 'linear', 'jira'])).toContain('GitHub, Linear and Jira');
+  });
+  it('dedupes repeated providers', () => {
+    expect(emptyAnswerMessage(['github', 'github'])).toContain('your GitHub and your decisions');
   });
 });
 

@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { schema } from '@falcon/db';
-import { answerQuestion } from '@falcon/core';
+import { answerQuestion, emptyAnswerMessage } from '@falcon/core';
 import { captureEvent } from '@falcon/observability';
 import type { ActiveSession } from './session';
 import { deps } from './deps';
@@ -73,7 +73,17 @@ export async function runFalconTurn(
 
     await tx.insert(schema.queryEvent).values({ workspaceId: s.workspaceId, userId: s.userId, kind });
 
-    return { conversationId: convId, answerId: a[0]!.id };
+    // For an empty answer, name what was actually searched (honest "nothing found", round-1 Tester #1).
+    // Only pay for the connection read on the empty path, and reuse this tenant tx (RLS-scoped).
+    let activeProviders: string[] = [];
+    if (answer.status === 'no_grounded_answer') {
+      const conns = await tx
+        .select({ provider: schema.connection.provider, status: schema.connection.status })
+        .from(schema.connection);
+      activeProviders = conns.filter((c) => c.status === 'active').map((c) => c.provider);
+    }
+
+    return { conversationId: convId, answerId: a[0]!.id, activeProviders };
   });
 
   // Usage/retention visibility (no-op unless PostHog is configured). Content is never sent —
@@ -90,7 +100,7 @@ export async function runFalconTurn(
     ...(answer.degraded ? { degraded: answer.degraded } : {}),
     ...(answer.syncWindowNote ? { syncWindowNote: answer.syncWindowNote } : {}),
     ...(answer.status === 'no_grounded_answer'
-      ? { message: "I don't have anything in your synced work that answers this." }
+      ? { message: emptyAnswerMessage(persisted.activeProviders) }
       : {}),
   };
 }
