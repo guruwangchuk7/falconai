@@ -135,6 +135,11 @@ describe('groundClaims (verify-then-drop)', () => {
     const { claims } = groundClaims([{ text: 'did X', citations: [1] }], [item(1)]);
     expect(claims[0]!.tier).toBeUndefined();
   });
+
+  it('propagates the retrieved passage (snippet) onto each citation for inline evidence', () => {
+    const { claims } = groundClaims([{ text: 'did X', citations: [1] }], [item(1)]);
+    expect(claims[0]!.citations[0]!.snippet).toBe('s1');
+  });
 });
 
 describe('claimTier (provenance-strength, deterministic — never a model score)', () => {

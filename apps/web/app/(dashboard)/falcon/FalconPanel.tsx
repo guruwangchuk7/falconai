@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 
-interface Citation { artifactId?: string; externalRef: string; title: string | null; type: string; url: string | null }
+interface Citation { artifactId?: string; externalRef: string; title: string | null; type: string; url: string | null; snippet?: string }
 type ClaimTier = 'confirmed' | 'from_comment';
 interface Claim { text: string; citations: Citation[]; tier?: ClaimTier }
 interface PendingRef { count: number; sourceRefs: (string | null)[]; queueLink: string }
@@ -123,6 +123,55 @@ function ClaimTierBadge({ tier }: { tier: ClaimTier }) {
     >
       ⚠ From a comment
     </span>
+  );
+}
+
+/** Trim an over-long retrieved passage for inline display (chunks are already bounded, but review
+ *  comments / PR bodies can run long). Full source is one click away via the citation link. */
+function clampSnippet(s: string, max = 500): string {
+  const t = s.trim();
+  return t.length > max ? t.slice(0, max).trimEnd() + '…' : t;
+}
+
+/** One grounded claim: badge + text + citation chips, plus an expandable evidence panel that shows the
+ *  actual retrieved passage per source — so a citation is a receipt you can READ, not just a link into a
+ *  400-comment PR (round-1: senior SWE + journalist). Manages its own disclosure state. */
+function ClaimCard({ claim }: { claim: Claim }) {
+  const [open, setOpen] = useState(false);
+  const hasEvidence = claim.citations.some((c) => c.snippet && c.snippet.trim());
+  return (
+    <div className="rounded-xl border border-hairline bg-surface p-4">
+      {claim.tier && <div className="mb-2"><ClaimTierBadge tier={claim.tier} /></div>}
+      <p className="text-[14.5px] leading-relaxed text-body-strong">{claim.text}</p>
+      <CitationChips citations={claim.citations} />
+      {hasEvidence && (
+        <>
+          <button
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="mt-2.5 text-[12.5px] font-medium text-muted underline underline-offset-2 hover:text-ink"
+          >
+            {open ? 'Hide evidence' : 'Show evidence'}
+          </button>
+          {open && (
+            <div className="mt-2 space-y-2.5 border-t border-hairline pt-2.5">
+              {claim.citations.map((c, j) => (
+                <div key={j} className="text-[13px]">
+                  <p className="font-medium text-body-strong">
+                    {c.type} {c.externalRef}{c.title ? ` — ${c.title}` : ''}
+                  </p>
+                  {c.snippet && c.snippet.trim() && (
+                    <p className="mt-0.5 whitespace-pre-wrap border-l-2 border-hairline pl-3 italic text-body">
+                      {clampSnippet(c.snippet)}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -314,11 +363,7 @@ export function FalconPanel() {
       {answer?.status === 'grounded' && (
         <div className="mt-6 space-y-3">
           {answer.claims.map((c, i) => (
-            <div key={i} className="rounded-xl border border-hairline bg-surface p-4">
-              {c.tier && <div className="mb-2"><ClaimTierBadge tier={c.tier} /></div>}
-              <p className="text-[14.5px] leading-relaxed text-body-strong">{c.text}</p>
-              <CitationChips citations={c.citations} />
-            </div>
+            <ClaimCard key={i} claim={c} />
           ))}
           {answer.dataAsOf && (
             <p className="flex items-center gap-1.5 text-[12px] text-muted">
