@@ -366,8 +366,7 @@ export async function getDecision(
     // D15: an accessible chain neighbor's title may itself be attendees_only and inaccessible to this
     // viewer — the chain link must project as a restricted FACT, never leak the neighbor's title.
     const canSee = (visibility: string | null, participants: unknown): boolean =>
-      visibility !== 'attendees_only' ||
-      (!!viewerUserId && Array.isArray(participants) && (participants as { userId?: string }[]).some((p) => p?.userId === viewerUserId));
+      canSeeVisibility(visibility, participants, viewerUserId);
 
     let supersedesTitle: string | null = null;
     let supersedesRestricted = false;
@@ -418,6 +417,71 @@ export async function getDecision(
       dismissedAt: r.dismissedAt ? r.dismissedAt.toISOString() : null,
       createdAt: r.createdAt.toISOString(),
       freshnessFlag: r.createdAt.getTime() < horizon,
+    };
+  });
+}
+
+// ---------- Decision timeline (full supersession lineage) ----------
+
+/** The D13/D15 tier predicate: an `attendees_only` record's content is visible ONLY to a viewer in its
+ *  participants snapshot; everything else is workspace-visible. Extracted so getDecision and the timeline
+ *  share ONE rule (no forked copy). */
+export function canSeeVisibility(visibility: string | null, participants: unknown, viewerUserId?: string): boolean {
+  return visibility !== 'attendees_only' ||
+    (!!viewerUserId && Array.isArray(participants) && (participants as { userId?: string }[]).some((p) => p?.userId === viewerUserId));
+}
+
+/** Pointer/metadata for a chain node — NO content (title/decision/rationale). Safe to read at any
+ *  visibility (decision_record RLS is tenant-only; a pointer is not content). */
+export interface StructuralNode {
+  id: string; supersedesId: string | null; visibility: string | null; participants: unknown;
+  confirmedAt: Date | null; origin: string; status: string;
+}
+/** Content projected ONLY for a node the viewer may see. */
+export interface TimelineContent {
+  id: string; title: string; decision: string | null; rationale: string | null; origin: string; confirmedByName: string | null;
+}
+export type TimelineNode =
+  | { restricted: false; id: string; title: string; decision: string | null; rationale: string | null;
+      date: string | null; confirmedByName: string | null; origin: string; status: string; isCurrent: boolean; isViewed: boolean }
+  | { restricted: true; isCurrent: boolean };
+
+/** Linearize the structural chain root -> tip. Root = the node whose supersedesId is null or points
+ *  outside the set. Walks successors (the node whose supersedesId === current.id). Post-fork-fix there is
+ *  ≤1 successor; if legacy data has a fork, pick the earliest-confirmed deterministically and flag it. A
+ *  visited set guards against a data cycle. */
+export function orderChain(rows: StructuralNode[]): { ordered: StructuralNode[]; forked: boolean } {
+  const ids = new Set(rows.map((r) => r.id));
+  const root = rows.find((r) => !r.supersedesId || !ids.has(r.supersedesId));
+  if (!root) return { ordered: rows.slice(), forked: false }; // pure cycle / no root — degrade, don't loop
+  const successorsOf = (id: string) =>
+    rows.filter((r) => r.supersedesId === id).sort((a, b) => (a.confirmedAt?.getTime() ?? 0) - (b.confirmedAt?.getTime() ?? 0));
+  const ordered: StructuralNode[] = [];
+  const visited = new Set<string>();
+  let cur: StructuralNode | undefined = root;
+  let forked = false;
+  while (cur && !visited.has(cur.id)) {
+    visited.add(cur.id);
+    ordered.push(cur);
+    const succ = successorsOf(cur.id);
+    if (succ.length > 1) forked = true;
+    cur = succ[0];
+  }
+  return { ordered, forked };
+}
+
+/** Zip the ordered structural nodes with the content the viewer may see: present -> full node; absent ->
+ *  masked placeholder (position only). Tip = last ordered node. */
+export function buildTimeline(ordered: StructuralNode[], content: Map<string, TimelineContent>, entryId: string): TimelineNode[] {
+  const tipId = ordered.length ? ordered[ordered.length - 1]!.id : null;
+  return ordered.map((n): TimelineNode => {
+    const isCurrent = n.id === tipId;
+    const c = content.get(n.id);
+    if (!c) return { restricted: true, isCurrent };
+    return {
+      restricted: false, id: n.id, title: c.title, decision: c.decision, rationale: c.rationale,
+      date: n.confirmedAt ? n.confirmedAt.toISOString() : null, confirmedByName: c.confirmedByName,
+      origin: c.origin, status: n.status, isCurrent, isViewed: n.id === entryId,
     };
   });
 }
