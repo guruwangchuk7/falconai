@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { schema } from '@falcon/db';
+import { captureException } from '@falcon/observability';
 import {
   generateDigest, indexArtifact, upsertArtifact, type CoreDeps,
   extractDecisions, contentHash, normalizeTitle, getMinedRow, recordMined, isSuppressed,
@@ -8,6 +9,7 @@ import {
   deleteWorkingCopy, setTranscriptRetainedUntil, getWorkspaceRetentionDays, setWorkingCopyExpiry,
   extractMeetingDecisions, MEETING_EXTRACTOR_VERSION, chunkUtterances, dedupeBySpanOverlap,
   resolveSpans, SpanIndexError, rationalePass, type ScoredMeetingCandidate,
+  extractMeetingCommitments,
 } from '@falcon/core';
 import type { SecretStore } from '@falcon/secrets';
 import type { ArtifactInput } from '@falcon/integrations';
@@ -234,6 +236,16 @@ export async function handleMeetingExtract(deps: CoreDeps, payload: { workspaceI
     });
     createdTitles.add(norm);
     decisionIds.push(id);
+  }
+
+  // 7b. Commitment overlay (showcase feature) — an ISOLATED, error-contained pass over the same
+  // transcript. Commitments are a lightweight side-record ("what did I promise?"); a failure here must
+  // NEVER regress the proven decision path above, so it is fully wrapped and its outcome does not feed
+  // `result` or the ledger. Same provenance discipline (sourceRef=meeting:{id}, evidence = resolved line).
+  try {
+    await extractMeetingCommitments(deps, workspaceId, { meetingId, utterances: indexed });
+  } catch (e) {
+    captureException(e, { kind: 'commitment-extract', workspaceId, meetingId });
   }
 
   // 8. Compute result BEFORE the retention step so the error branch can decide whether to preserve
