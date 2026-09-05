@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
-import { listQueue } from '@falcon/core';
+import { listQueue, countOpenCommitments } from '@falcon/core';
 import { getActiveSession } from '@/lib/session';
 import { getViewer } from '@/lib/viewer';
 import { deps } from '@/lib/deps';
@@ -14,9 +14,10 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   // Sidebar chrome: who's signed in, which workspace, and the real "awaiting confirmation" count
   // that feeds the Decisions badge.
-  const [viewer, queue] = await Promise.all([
+  const [viewer, queue, commitmentCount] = await Promise.all([
     getViewer(session.userId, session.workspaceId),
     listQueue(deps(), session.workspaceId, 100, undefined, session.userId).catch(() => []),
+    countOpenCommitments(deps(), session.workspaceId).catch(() => 0),
   ]);
 
   const userName = viewer.name ?? 'Your workspace';
@@ -24,7 +25,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   return (
     <div className="flex h-screen">
-      <Sidebar userName={userName} workspaceName={workspaceName} queueCount={queue.length} />
+      <Sidebar userName={userName} workspaceName={workspaceName} queueCount={queue.length} commitmentCount={commitmentCount} />
       <div className="flex-1 overflow-auto">
         {/* Layout supplies padding only (design.md main: 56px 64px). Each page caps its own reading
             column so wide pages (the Ask dashboard) can use the space and list pages stay readable. */}

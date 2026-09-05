@@ -110,3 +110,11 @@ export const MEETING_CHUNK_SIZE = 40;            // utterances per extraction ch
 // ALL `no_decision`: any real decision resets the run, so a normal cadence never trips it, but a systematic
 // break climbs unbounded. Set ABOVE the expected genuine no-decision run (a week of decisionless standups).
 export const DECISION_MEETING_SILENT_STREAK = 8;
+
+/**
+ * Commitment tracking (showcase feature). Suggest-time cutoff on a commitment candidate's score.
+ * Commitments are lower-stakes than decisions (a missed one is a nudge, not a corrupted memory), so the
+ * bar is a touch lower than DECISION_MEETING_MIN_CONFIDENCE — but still conservative to keep the
+ * "open promises" list trustworthy. Extraction runs in the same meeting pass, error-contained.
+ */
+export const COMMITMENT_MIN_CONFIDENCE = 0.6;

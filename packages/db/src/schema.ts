@@ -185,6 +185,26 @@ export const minedMeeting = pgTable('mined_meeting', {
   maxCandidateScore: real('max_candidate_score'),
 }, (t) => ({ pk: primaryKey({ columns: [t.workspaceId, t.meetingId] }) }));
 
+// ---------- Commitment tracking (0011_commitment.sql) ----------
+// A promise/action item captured from a meeting or pasted call. Isolated from decision_record: a
+// lightweight overlay so a commitment-extraction failure never regresses the proven decision path.
+export const commitment = pgTable('commitment', {
+  id: uuid('id').notNull().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull(),
+  text: text('text').notNull(),                                  // the promise itself
+  ownerHint: text('owner_hint'),                                 // who promised (free transcript label)
+  counterparty: text('counterparty'),                            // who it was promised TO ("Acme"), when stated
+  dueHint: text('due_hint'),                                     // when, in the speaker's words
+  status: text('status').notNull().default('open'),              // open | done
+  sourceRef: text('source_ref'),                                 // provenance: meeting:{id}, never model output
+  meetingId: uuid('meeting_id'),
+  evidenceSpeaker: text('evidence_speaker'),                     // receipt: who said it
+  evidenceText: text('evidence_text').notNull(),                 // receipt: the verbatim line
+  evidenceUtteranceIdx: integer('evidence_utterance_idx'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  doneAt: timestamp('done_at', { withTimezone: true }),
+}, (t) => ({ pk: primaryKey({ columns: [t.workspaceId, t.id] }) }));
+
 // ---------- Phase 2: Personal Falcon (0002_personal_falcon.sql) ----------
 
 export const conversation = pgTable('conversation', {
