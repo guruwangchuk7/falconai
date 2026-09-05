@@ -20,6 +20,7 @@ export interface Citation {
   title: string | null;
   type: string;
   url: string | null; // openable link to the source (null when not resolvable → UI shows a label)
+  trustTier: string; // trusted | mixed | untrusted (§14) — drives the provenance-strength badge
 }
 
 /** Build an openable provenance URL from an artifact's source + repo/project + ref, so a citation
@@ -37,9 +38,26 @@ export function citationUrl(
   return null;
 }
 
+/** Provenance-strength badge for a claim — deterministic from the cited sources' metadata, NEVER a
+ *  model self-rated confidence score (which is the unfalsifiable over-confidence testers punish). */
+export type ClaimTier = 'confirmed' | 'from_comment';
+
+/** Derive a claim's badge from its citations (pure):
+ *  - `confirmed`   → grounded on a confirmed Decision Record (only confirmed records are retrievable).
+ *  - `from_comment`→ the ONLY support is untrusted-tier content (a PR/ticket comment, not a record).
+ *  - `null`        → anything else (a trusted PR/commit) — shown plainly, no badge, to avoid noise.
+ *  "Confirmed" wins over "from_comment"; one non-untrusted source clears the caution. */
+export function claimTier(citations: readonly Pick<Citation, 'type' | 'trustTier'>[]): ClaimTier | null {
+  if (citations.length === 0) return null;
+  if (citations.some((c) => c.type === 'decision')) return 'confirmed';
+  if (citations.every((c) => c.trustTier === 'untrusted')) return 'from_comment';
+  return null;
+}
+
 export interface Claim {
   text: string;
   citations: Citation[]; // >= 1 for a rendered claim
+  tier?: ClaimTier; // provenance-strength badge (absent = no badge)
 }
 
 export interface Answer {
@@ -122,10 +140,13 @@ export function groundClaims(
       const isDecision = it.source === 'decision';
       const url = isDecision ? `/decisions/${it.artifactId}` : citationUrl(it);
       const externalRef = isDecision ? (it.title ?? 'decision') : it.externalRef;
-      citations.push({ artifactId: it.artifactId, externalRef, title: it.title, type: it.type, url });
+      citations.push({ artifactId: it.artifactId, externalRef, title: it.title, type: it.type, url, trustTier: it.trustTier });
       citedIso.push(it.lastSyncedAt);
     }
-    if (c.text.trim() && citations.length > 0) claims.push({ text: c.text.trim(), citations });
+    if (c.text.trim() && citations.length > 0) {
+      const tier = claimTier(citations);
+      claims.push({ text: c.text.trim(), citations, ...(tier ? { tier } : {}) });
+    }
   }
   return { claims, citedIso };
 }
