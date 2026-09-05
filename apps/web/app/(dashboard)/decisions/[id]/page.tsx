@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { getDecision, getDecisionSpans, getMeeting } from '@falcon/core';
+import { getDecision, getDecisionSpans, getMeeting, getDecisionTimeline } from '@falcon/core';
 import { getActiveSession } from '@/lib/session';
 import { deps } from '@/lib/deps';
 import { ConfirmControl } from './ConfirmControl';
+import { DecisionTimeline } from './DecisionTimeline';
 
 export const runtime = 'nodejs';
 
@@ -42,6 +43,7 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
   const meetingId = isMeeting && d.sourceRef?.startsWith('meeting:') ? d.sourceRef.slice('meeting:'.length) : null;
   const meeting = meetingId ? await getMeeting(deps(), session.workspaceId, meetingId) : null;
 
+  const timeline = await getDecisionTimeline(deps(), session.workspaceId, id, session.userId);
   const spans = await getDecisionSpans(deps(), session.workspaceId, id, session.userId);
   const decisionSpans = spans.filter((s) => s.kind === 'decision');
   const rationaleSpans = spans.filter((s) => s.kind === 'rationale');
@@ -74,23 +76,13 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
               : d.sourceRef}
           </Row>
         )}
-        {(d.supersedesId || d.supersedesRestricted) && (
-          <Row label="Supersedes">
-            {d.supersedesRestricted
-              ? <span className="text-muted">a decision you don’t have access to</span>
-              : <Link href={`/decisions/${d.supersedesId}`} className="underline">{d.supersedesTitle ?? d.supersedesId}</Link>}
-          </Row>
-        )}
-        {(d.supersededById || d.supersededByRestricted) && (
-          <Row label="Superseded by">
-            {d.supersededByRestricted
-              ? <span className="text-muted">a decision you don’t have access to</span>
-              : <Link href={`/decisions/${d.supersededById}`} className="underline">{d.supersededByTitle ?? d.supersededById}</Link>}
-          </Row>
-        )}
         {d.confirmedAt && <Row label="Confirmed">{new Date(d.confirmedAt).toLocaleString()}{d.confirmedBy ? ` · ${d.confirmedBy}` : ''}</Row>}
         <Row label="Created">{new Date(d.createdAt).toLocaleString()}</Row>
       </div>
+
+      {/* Full supersession lineage (replaces the single-hop Supersedes/Superseded-by rows). Only shows
+          when the decision actually has a history; a lone decision renders nothing here. */}
+      {timeline.length > 1 && <DecisionTimeline nodes={timeline} />}
 
       {spans.length > 0 && (
         <div className="mt-6">
