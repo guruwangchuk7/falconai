@@ -8,7 +8,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDb, type DbHandle } from '@falcon/db';
 import { EMBEDDING_MODEL, EMBEDDING_VERSION, type LlmProviders } from '@falcon/llm';
-import { createDecision, confirmDecision, searchDecisions, getDecision, getDecisionSpans, type CoreDeps } from '@falcon/core';
+import { createDecision, confirmDecision, searchDecisions, getDecision, getDecisionSpans, getDecisionTimeline, supersedeDecision, type CoreDeps } from '@falcon/core';
 import { startTestDb, type TestDb } from '../support/pg.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -85,4 +85,40 @@ it('getDecision: attendees_only hidden from non-attendee, visible to attendee', 
   const id = await seedConfirmed('attendees_only', 'PrivateCall');
   expect(await getDecision(deps, WS_A, id, OUTSIDER)).toBeNull();
   expect((await getDecision(deps, WS_A, id, ATTENDEE))!.id).toBe(id);
+});
+
+// A (workspace) -> B (attendees_only) -> C (workspace), C current. Chain via supersede.
+async function seedChain() {
+  const a = await seedConfirmed('workspace', 'ChainSQLite');
+  const b = await seedConfirmed('attendees_only', 'ChainSecretPivot');
+  await supersedeDecision(deps, WS_A, { newRecordId: b, supersedesId: a });
+  const c = await seedConfirmed('workspace', 'ChainNeon');
+  await supersedeDecision(deps, WS_A, { newRecordId: c, supersedesId: b });
+  return { a, b, c };
+}
+
+it('getDecisionTimeline: masked node leaks NO content to a non-attendee, but is present by position', async () => {
+  const { a, b, c } = await seedChain();
+  const tl = await getDecisionTimeline(deps, WS_A, c, OUTSIDER);
+  expect(tl.map((n) => (n.restricted ? 'MASKED' : n.id))).toEqual([a, 'MASKED', c]); // B masked, in order
+  void b;
+
+  const blob = JSON.stringify(tl);
+  expect(blob).not.toContain('ChainSecretPivot'); // masked title/decision/rationale never crosses the boundary
+  const tip = tl[2]!;
+  expect(tip.restricted).toBe(false);
+  if (!tip.restricted) expect(tip.isCurrent).toBe(true);
+});
+
+it('getDecisionTimeline: the attendee sees the middle node fully', async () => {
+  const { b, c } = await seedChain();
+  const tl = await getDecisionTimeline(deps, WS_A, c, ATTENDEE);
+  const middle = tl.find((n) => !n.restricted && n.id === b);
+  expect(middle).toBeTruthy();
+  expect(JSON.stringify(tl)).toContain('ChainSecretPivot');
+});
+
+it('getDecisionTimeline: a single (unsuperseded) decision returns length 1', async () => {
+  const id = await seedConfirmed('workspace', 'LonelyDecision');
+  expect(await getDecisionTimeline(deps, WS_A, id, ATTENDEE)).toHaveLength(1);
 });
