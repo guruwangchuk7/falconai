@@ -42,6 +42,12 @@ const icons = {
       <circle cx="10" cy="17" r="1.4" fill="currentColor" stroke="none" />
     </svg>
   ),
+  transcript: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5M8.5 13h4M8.5 16.5h5" />
+    </svg>
+  ),
 };
 
 export function Sidebar({ userName, workspaceName, queueCount }: { userName: string; workspaceName: string; queueCount: number }) {
@@ -53,6 +59,7 @@ export function Sidebar({ userName, workspaceName, queueCount }: { userName: str
       items: [
         { href: '/falcon', label: 'Ask', icon: icons.ask },
         { href: '/decisions', label: 'Decisions', icon: icons.decisions, count: queueCount || undefined },
+        { href: '/transcripts', label: 'Add transcript', icon: icons.transcript },
         { href: '/me/digest', label: 'Digest', icon: icons.digest },
       ],
     },

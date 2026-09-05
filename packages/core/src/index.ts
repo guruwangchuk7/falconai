@@ -10,4 +10,5 @@ export * from './meeting-ledger.js';
 export * from './answer.js';
 export * from './meeting.js';
 export * from './meeting-extract.js';
+export * from './transcript.js';
 export * from './calibrate.js';
