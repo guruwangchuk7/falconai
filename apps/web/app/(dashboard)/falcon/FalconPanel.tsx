@@ -2,7 +2,8 @@
 import { useState } from 'react';
 
 interface Citation { artifactId?: string; externalRef: string; title: string | null; type: string; url: string | null }
-interface Claim { text: string; citations: Citation[] }
+type ClaimTier = 'confirmed' | 'from_comment';
+interface Claim { text: string; citations: Citation[]; tier?: ClaimTier }
 interface PendingRef { count: number; sourceRefs: (string | null)[]; queueLink: string }
 interface DecisionStatus {
   settled?: { decisionId: string; changed: boolean };
@@ -103,6 +104,26 @@ function CitationChips({ citations }: { citations: Citation[] }) {
 
 function CiteDot() {
   return <span className="h-1.5 w-1.5 rounded-full bg-forest" aria-hidden />;
+}
+
+/** Provenance-strength badge — a factual statement about the SOURCE, never a confidence score.
+ *  `confirmed` = grounded on a ratified decision; `from_comment` = the only support is a comment. */
+function ClaimTierBadge({ tier }: { tier: ClaimTier }) {
+  if (tier === 'confirmed') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-forest/30 bg-forest/5 px-2 py-0.5 text-[11.5px] font-medium text-forest">
+        ✓ Confirmed decision
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-brass/30 bg-brass/5 px-2 py-0.5 text-[11.5px] font-medium text-brass"
+      title="This rests on a comment in discussion, not a confirmed record — worth verifying."
+    >
+      ⚠ From a comment
+    </span>
+  );
 }
 
 // Grounded-in-real-work prompts. Every one queries the user's own synced artifacts — no fabricated
@@ -294,6 +315,7 @@ export function FalconPanel() {
         <div className="mt-6 space-y-3">
           {answer.claims.map((c, i) => (
             <div key={i} className="rounded-xl border border-hairline bg-surface p-4">
+              {c.tier && <div className="mb-2"><ClaimTierBadge tier={c.tier} /></div>}
               <p className="text-[14.5px] leading-relaxed text-body-strong">{c.text}</p>
               <CitationChips citations={c.citations} />
             </div>
