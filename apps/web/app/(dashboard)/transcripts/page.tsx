@@ -12,7 +12,7 @@ export default function TranscriptsPage() {
         the mockups by Friday”) show up in Commitments — each one cited to the exact line it came from.
         Confirm the decisions that are real; only confirmed decisions become answerable memory.
       </p>
-      <div className="mt-8 max-w-2xl">
+      <div className="mt-8">
         <TranscriptForm />
       </div>
     </main>
