@@ -39,22 +39,33 @@ No dedicated route — inline only.
 New function in `packages/core/src/decisions.ts` (alongside `getDecision`). Runs in one
 `withTenant` transaction.
 
-**Walk (iterative linked-list):**
-1. From `id`, walk **backward** via `supersedesId` to the root, collecting ids.
-2. Walk **forward** via reverse lookup (`where supersedesId = current.id`) to the tip.
-3. Concatenate into the ordered chain root → tip.
+The masking is enforced at the **query layer**, not in application code. Masked content must never
+cross the database boundary — matching the house style (the answer path gates artifacts with an ACL
+`WHERE` clause, `retrieve.ts`; `listQueue` omits masked rows in SQL). A single function that fetches
+every row and then discards the unreadable ones in TypeScript is the flag pattern in disguise: the
+masked content sits in process memory, one `console.log` / error serializer / careless refactor away
+from a response body, and no test would catch it. So the walk is **two passes**:
 
-**Invariants / guards:**
-- **Cycle guard:** a `visited: Set<string>` — never revisit an id (defensive against a data cycle).
-- **Cap:** `MAX_CHAIN = 50`; if exceeded, stop and `captureException`/log (no silent truncation).
-- **Single successor:** post-PR-#35 a record has ≤1 successor. The forward lookup still uses
-  `.limit(1)` ordered by `confirmedAt asc` as a deterministic belt for any legacy forked data —
-  it never fabricates or hides a branch silently; it just picks the earliest deterministically.
+**Pass 1 — Structural (no content).** A single recursive CTE (`WITH RECURSIVE`) collects the whole
+connected chain from `id` — following `supersedesId` upward and the reverse edge downward — selecting
+**only** `id, supersedes_id, visibility, participants, confirmed_at, dismissed_at, origin, status`.
+No `title`, no `decision`, no `rationale`. This set is safe to read at any visibility ("reading a
+pointer isn't reading content" — true precisely because content is not in the select list). The CTE
+carries a depth guard (cap `MAX_CHAIN = 50`) and terminates on cycles via `UNION` (deduped working
+set); one round trip replaces the N+1 walk. Post-PR-#35 each record has ≤1 successor, so the set
+linearizes to one chain; ordering is done in memory from the `id → supersedes_id` map (find the root —
+the node whose `supersedes_id` is null or outside the set — then walk down). If a fork is somehow
+present in legacy data, ordering is deterministic (earliest `confirmed_at`) and logged, never silently
+truncated.
 
-**Traversing masked nodes (not a leak):** tenant RLS lets us read a row's *structural pointers*
-(`id`, `supersedesId`) even when the row is `attendees_only`. We use those pointers to keep
-walking, while the **content** projection is gated by the existing `canSee(visibility, participants)`
-helper (reused verbatim from `getDecision`). Reading a pointer is not reading content.
+**Pass 2 — Content (visible ids only).** Compute the visible id set by applying the existing
+`canSee(visibility, participants)` rule (reused from `getDecision`) to the structural rows. Then a
+second query fetches `title, decision, rationale, origin` **`WHERE id IN (<visible ids>)`** joined to
+`users` for the confirmer's display name. A masked node's title/rationale is never in any result set.
+
+**Assembly.** Zip the ordered structural list with the content map: a node with a content row →
+`restricted:false` with its fields; a node absent from the content map (masked) → `restricted:true`
+placeholder at its position.
 
 **Projection per node:**
 
@@ -62,7 +73,9 @@ helper (reused verbatim from `getDecision`). Reading a pointer is not reading co
 type TimelineNode =
   | { restricted: false;
       id: string; title: string; decision: string | null; rationale: string | null;
-      date: string;                 // confirmedAt ?? createdAt (ISO)
+      date: string;                 // confirmedAt (ISO). Chain nodes are always confirmed, so this
+                                    // is always set; a null is a data anomaly — omit + log, never
+                                    // fall back to createdAt (a plausible-looking wrong date).
       confirmedByName: string | null; // resolved display name, NOT a raw UUID
       origin: string;               // manual | suggested | meeting (badge)
       status: string;               // confirmed | superseded
@@ -71,12 +84,9 @@ type TimelineNode =
   | { restricted: true; isCurrent: boolean };  // masked hop: position only, zero content
 ```
 
-- `confirmedByName` is resolved via a `users` join (batch, one query for all node owners) so the
-  timeline never shows a raw UUID (the current detail page's raw-UUID display is a pre-existing
-  wart we avoid repeating here; we do not change that existing row in this feature).
 - `isCurrent` may be `true` on a **masked** node — an honest "the current version is one you can't
-  see" state. The **viewed** record is always accessible (`getDecision` returns null otherwise), so
-  `isViewed` never coincides with `restricted: true`.
+  see" state (the D15 tradeoff: status honest, content sealed). The **viewed** record is always
+  accessible (`getDecision` returns null otherwise), so `isViewed` never coincides with `restricted`.
 
 ### Web — `DecisionTimeline` server component
 
@@ -98,26 +108,41 @@ When ≤ 1 node, nothing changes from today.
 ## Error handling / edge cases
 
 - **Broken pointer** (a `supersedesId` referencing a deleted row): the walk terminates cleanly at
-  that end (the neighbor fetch returns nothing).
-- **Dismissed nodes** (`dismissedAt` set): still shown in the lineage (dismissal is orthogonal to
-  supersession) with a subtle "dismissed" marker.
+  that end (the neighbor is simply absent from the structural set).
+- **Dismissed records never appear — it's an unreachable state, not a rendered one.** Supersession
+  only links *confirmed* records; `dismissDecision` only tombstones `unconfirmed` ones (verified:
+  its `WHERE status='unconfirmed'`). So a chain node can't be dismissed. We spec **no** UI for it:
+  the code doesn't crash on a `dismissedAt`, but there is no "dismissed" marker for a state that
+  can't occur.
 - **Only confirmed/superseded records appear:** an in-flight `unconfirmed` supersede isn't linked
-  until it's confirmed, so it never shows mid-chain.
-- **Cycle / over-cap:** guarded as above; logged, never infinite-loops or silently truncates.
+  until it's confirmed, so it never shows mid-chain. `confirmedAt` is therefore always set on a chain
+  node; a null is treated as a data anomaly (omit the date + log), never masked with a fallback.
+- **Cycle / over-cap:** the recursive CTE dedups via `UNION` and caps at `MAX_CHAIN`; logged, never
+  infinite-loops or silently truncates.
 - **Masked date via position:** a masked node's position between two dated neighbors implicitly
   bounds its date. This is inherent to showing position honestly and is accepted (per the scope
   decision) — we still emit no explicit date for it.
 
 ## Testing
 
-Unit tests (stubbed `tx`, mirroring `decision-status` / `answer-grounding` patterns) on the pure
-assembly + masking:
-- multi-hop chain assembled in correct root→tip order from a **middle** entry point (both walks);
-- a masked **middle** hop → `{restricted:true}` placeholder at the right position, no content;
-- a masked **tip** → `isCurrent: true` on a restricted node;
-- **single-node** chain → returns length 1 (page renders no timeline);
-- **cycle** guard terminates; **over-cap** stops + logs;
-- `confirmedByName` resolves to a name, never a UUID.
+**Integration (real Postgres — the security-critical proof), in `decision-tier-read.test.ts`:**
+- A non-attendee calls `getDecisionTimeline` on a chain that contains an `attendees_only` node. The
+  masked node's **title and rationale strings appear nowhere** in the returned structure, and it is
+  present as a `restricted:true` placeholder at the correct position. This is the test a security
+  reviewer asks for: it proves the *query* never fetched the content (not merely that assembly logic
+  discarded it) and that RLS permits the structural read on an `attendees_only` row — a live
+  assumption a stubbed `tx` cannot verify.
+- The attendee (participant) sees the same node's full content — the masking is viewer-dependent, not
+  a blanket hide.
+- Ordering: a three-node chain returns oldest→current with the correct `isCurrent`/`isViewed` flags.
+
+**Unit (stubbed `tx`, mirroring `decision-status` / `answer-grounding`) on the pure ordering/assembly:**
+- ordered root→tip from a **middle** entry point; single-node → length 1 (page renders no timeline);
+- cycle-set linearizes without looping; over-cap stops + logs;
+- `confirmedByName` maps to a name, never a UUID.
+
+Stubbed tests own the *ordering* logic; the integration test owns the *no-content-leak* invariant —
+the split is deliberate (a double can't prove the SQL didn't select the masked column).
 
 (The supersede-fork fix and its regression live in PR #35 — integration, real Postgres.)
 
