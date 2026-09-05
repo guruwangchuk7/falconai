@@ -20,6 +20,24 @@ describe('parseTimeWindow', () => {
   it('last month → rolling 30 days', () => {
     expect(parseTimeWindow('summarize last month', now).since).toBe('2026-07-30T10:00:00.000Z');
   });
+  it('last 3 months → rolling 90 days (Tester #1 exact query)', () => {
+    // now - 90d. Was previously UNPARSED → silently no date filter → the skeptic-losing truncation.
+    expect(parseTimeWindow('what did I change in authentication over the last 3 months?', now).since)
+      .toBe('2026-05-31T10:00:00.000Z');
+  });
+  it('past quarter → rolling 90 days', () => {
+    expect(parseTimeWindow('decisions from the past quarter', now).since).toBe('2026-05-31T10:00:00.000Z');
+  });
+  it('last 2 weeks → rolling 14 days', () => {
+    expect(parseTimeWindow('what shipped in the last 2 weeks', now).since).toBe('2026-08-15T10:00:00.000Z');
+  });
+  it('last 10 days → rolling 10 days', () => {
+    expect(parseTimeWindow('anything in the last 10 days', now).since).toBe('2026-08-19T10:00:00.000Z');
+  });
+  it('a multi-month phrase takes precedence over the bare "month" branch', () => {
+    // "last 6 months" must NOT collapse to the 30-day "month" rule.
+    expect(parseTimeWindow('the last 6 months of work', now).since).toBe('2026-03-02T10:00:00.000Z');
+  });
   it('no time phrase → empty window', () => {
     expect(parseTimeWindow('what did I do for authentication?', now)).toEqual({});
   });

@@ -88,6 +88,7 @@ export async function runFalconTurn(
     dataAsOf: answer.dataAsOf,
     ...(answer.decisionStatus ? { decisionStatus: answer.decisionStatus } : {}),
     ...(answer.degraded ? { degraded: answer.degraded } : {}),
+    ...(answer.syncWindowNote ? { syncWindowNote: answer.syncWindowNote } : {}),
     ...(answer.status === 'no_grounded_answer'
       ? { message: "I don't have anything in your synced work that answers this." }
       : {}),

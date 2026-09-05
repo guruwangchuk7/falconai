@@ -29,7 +29,7 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
 
   if (!d) {
     return (
-      <main className="max-w-2xl">
+      <main>
         <Link href="/decisions" className="text-sm text-muted underline">← Decision Memory</Link>
         <p className="mt-4 text-muted">Decision not found.</p>
       </main>
@@ -48,12 +48,12 @@ export default async function DecisionDetailPage({ params }: { params: Promise<{
 
   const options = Array.isArray(d.options) ? (d.options as unknown[]) : null;
   return (
-    <main className="max-w-2xl">
+    <main>
       <div className="mb-4 flex items-center justify-between">
         <Link href="/decisions" className="text-sm text-muted underline">← Decision Memory</Link>
         {d.dismissedAt && <span className="text-xs text-brass">dismissed</span>}
       </div>
-      <h1 className="text-xl font-medium text-ink">{d.title}</h1>
+      <h1 className="font-display text-[24px] font-medium text-ink">{d.title}</h1>
       <div className="mt-1 text-sm text-body">{STATUS_LABEL[d.status] ?? d.status}</div>
       {d.freshnessFlag && <div className="mt-1 text-xs text-brass">⚠ older than the freshness horizon</div>}
 

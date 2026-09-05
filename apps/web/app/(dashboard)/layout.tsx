@@ -1,24 +1,35 @@
 import type { ReactNode } from 'react';
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { listQueue } from '@falcon/core';
 import { getActiveSession } from '@/lib/session';
+import { getViewer } from '@/lib/viewer';
+import { deps } from '@/lib/deps';
+import { Sidebar } from './Sidebar';
+
+export const runtime = 'nodejs';
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const session = await getActiveSession();
-  if (!session) redirect('/api/auth/signin');
+  if (!session) redirect('/signin');
+
+  // Sidebar chrome: who's signed in, which workspace, and the real "awaiting confirmation" count
+  // that feeds the Decisions badge.
+  const [viewer, queue] = await Promise.all([
+    getViewer(session.userId, session.workspaceId),
+    listQueue(deps(), session.workspaceId, 100, undefined, session.userId).catch(() => []),
+  ]);
+
+  const userName = viewer.name ?? 'Your workspace';
+  const workspaceName = viewer.workspaceName;
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <header className="mb-8 flex items-center gap-6 border-b border-hairline pb-4">
-        <span className="font-medium text-ink">Falcon</span>
-        <nav className="flex gap-4 text-sm text-muted">
-          <Link href="/falcon">Ask Falcon</Link>
-          <Link href="/integrations">Integrations</Link>
-          <Link href="/me/digest">My digest</Link>
-          <Link href="/decisions">Decisions</Link>
-        </nav>
-      </header>
-      {children}
+    <div className="flex h-screen">
+      <Sidebar userName={userName} workspaceName={workspaceName} queueCount={queue.length} />
+      <div className="flex-1 overflow-auto">
+        {/* Layout supplies padding only (design.md main: 56px 64px). Each page caps its own reading
+            column so wide pages (the Ask dashboard) can use the space and list pages stay readable. */}
+        <div className="px-16 py-14">{children}</div>
+      </div>
     </div>
   );
 }

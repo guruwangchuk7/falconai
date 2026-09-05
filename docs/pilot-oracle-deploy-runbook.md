@@ -12,6 +12,7 @@ Stand up the **memory-layer beta** (Personal Falcon Q&A + Decision Memory + in-m
 - Supabase: owner `DATABASE_URL` (port 6543 pooler, user `postgres.<ref>`) + `falcon_app` `APP_DATABASE_URL` (non-superuser, no BYPASSRLS).
 - Upstash Redis **TCP** URL (`rediss://…:6379`, NOT the REST URL).
 - A **prod GitHub App** (reuse the dev one or make a `-prod` app) — App ID, slug, PKCS#8 private key, webhook secret.
+- *(Optional)* A **Google OAuth client** — only if you want non-engineer pilot testers to sign in without GitHub (they'd use Decision Memory). Client ID + secret; the provider auto-enables when both are set.
 - Anthropic API key. Voyage API key (add a payment method to lift the 3 RPM cap, or accept slow first-sync).
 - A **domain or free subdomain** pointing at the VM (needed for HTTPS + stable OAuth callbacks — see §4). A bare IP won't work for Let's Encrypt or GitHub OAuth.
 - Generate a fresh 32-byte base64 `SECRETS_KEK` for prod: `openssl rand -base64 32`.
@@ -70,6 +71,7 @@ Create `~/falconai/.env` (see `.env.example`). Watch the known gotchas (`reviews
 - `DATABASE_URL` = Supabase **owner** URL (migrations). `APP_DATABASE_URL` = **`falcon_app`** URL (runtime — this is what makes RLS enforce; SC-D2).
 - `REDIS_URL` = Upstash **TCP** `rediss://…:6379`.
 - `AUTH_SECRET` = `openssl rand -base64 32`. `AUTH_URL` = `https://falcon.example.com` (the prod origin).
+- *(Optional)* `AUTH_GOOGLE_ID` + `AUTH_GOOGLE_SECRET` to enable Google sign-in for non-engineer testers (both required, or leave both unset).
 - `GITHUB_APP_PRIVATE_KEY` = **PKCS#8**, single-line, `\n`-escaped, double-quoted (convert if GitHub gave you PKCS#1 `BEGIN RSA PRIVATE KEY`).
 - `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, `SECRETS_KEK` (the fresh prod one), `SECRETS_BACKEND=file`, `SECRETS_FILE_PATH=/home/ubuntu/falconai/.secrets/store.enc.json`, Sentry/PostHog keys.
 - **Do NOT set `FALCON_FAKE_LLM`** (non-prod only).
@@ -90,6 +92,8 @@ On the GitHub App settings, set all URLs to the prod origin:
 - **Setup URL** → `https://falcon.example.com/api/integrations/github/callback` (+ "Redirect on update").
 - **Auth callback** → include `https://falcon.example.com/api/auth/callback/github` (keep the `issuer` fix in `apps/web/lib/auth.ts`).
 - **Webhook** → `https://falcon.example.com/api/webhooks/github` with `GITHUB_WEBHOOK_SECRET`.
+
+**Google OAuth (only if enabling non-engineer sign-in):** in Google Cloud Console → the OAuth client → **Authorized redirect URIs** add `https://falcon.example.com/api/auth/callback/google` (JavaScript origins: `https://falcon.example.com`). The `/signin` page shows the Google button automatically once `AUTH_GOOGLE_ID/SECRET` are set. **Rotate any client secret that was ever shared in plaintext before go-live.**
 
 ## 8. Run web + worker under pm2 (always-on)
 ```bash

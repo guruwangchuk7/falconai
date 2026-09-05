@@ -15,26 +15,43 @@ interface AskResponse {
   claims: Claim[];
   dataAsOf: string | null;
   decisionStatus?: DecisionStatus;
+  syncWindowNote?: string;
   message?: string;
   conversationId?: string;
 }
 
-/** The four-state decision boundary (US2). Surfaces an UNCONFIRMED candidate as a neutral status line
- *  — existence + source pointer + a link to the queue — and NEVER its content. */
+/** The four-state decision boundary (US2). Surfaces (a) a SUPERSEDED-lineage note when the answer is
+ *  grounded on a confirmed decision that replaced an earlier one — so a reversed/updated decision is
+ *  never presented as if it had no history (F10.1, the CTO's "did we change this?" ask); and (b) an
+ *  UNCONFIRMED candidate as a neutral status line — existence + source pointer + queue link, NEVER its
+ *  content. Both can co-occur ("we decided X, which changed an earlier call, and there's a new proposal"). */
 function DecisionStatusNote({ status }: { status: DecisionStatus }) {
   const pending = status.proposed ?? status.pendingChange;
-  if (!pending) return null;
-  const refs = pending.sourceRefs.filter((r): r is string => !!r);
+  const superseded = status.settled?.changed ? status.settled : undefined;
+  if (!pending && !superseded) return null;
+
+  const refs = pending?.sourceRefs.filter((r): r is string => !!r) ?? [];
   const from = refs.length ? ` (from ${refs.join(', ')})` : '';
   const lead = status.proposed
     ? "This isn't settled yet — there's an unconfirmed decision candidate"
     : 'Heads up: an unratified change to this decision has been proposed';
-  const plural = pending.count > 1 ? `${pending.count} candidates` : 'a candidate';
+  const plural = pending && pending.count > 1 ? `${pending.count} candidates` : 'a candidate';
+
   return (
-    <p className="mt-3 rounded border border-hairline bg-hairline/20 p-2.5 text-sm text-body">
-      {lead}{pending.count > 1 ? ` — ${plural}` : ''}{from}.{' '}
-      <a href={pending.queueLink} className="underline decoration-dotted hover:text-ink">Open the decision queue</a>
-    </p>
+    <div className="mt-3 space-y-2">
+      {superseded && (
+        <p className="rounded-xl border border-hairline bg-surface-strong/50 p-3 text-[13.5px] text-body">
+          This reflects a decision that replaced an earlier one — you&apos;re seeing the current version.{' '}
+          <a href={`/decisions/${superseded.decisionId}`} className="font-medium underline decoration-dotted underline-offset-2 hover:text-ink">See what changed</a>
+        </p>
+      )}
+      {pending && (
+        <p className="rounded-xl border border-hairline bg-surface-strong/50 p-3 text-[13.5px] text-body">
+          {lead}{pending.count > 1 ? ` — ${plural}` : ''}{from}.{' '}
+          <a href={pending.queueLink} className="font-medium underline decoration-dotted underline-offset-2 hover:text-ink">Open the decision queue</a>
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -55,7 +72,7 @@ interface HistoryDetail { id: string; title: string | null; turns: HistoryTurn[]
 function CitationChips({ citations }: { citations: Citation[] }) {
   if (citations.length === 0) return null;
   return (
-    <div className="mt-1.5 flex flex-wrap gap-1.5">
+    <div className="mt-2.5 flex flex-wrap gap-1.5">
       {citations.map((cit, j) =>
         cit.url ? (
           <a
@@ -63,13 +80,19 @@ function CitationChips({ citations }: { citations: Citation[] }) {
             href={cit.url}
             target="_blank"
             rel="noreferrer"
-            className="rounded bg-hairline/40 px-1.5 py-0.5 text-xs text-muted underline decoration-dotted hover:text-ink"
+            className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface-strong/50 px-2.5 py-1 text-[12px] font-medium text-body transition-colors hover:border-hairline-strong hover:text-ink"
             title={cit.title ?? 'Open source'}
           >
+            <CiteDot />
             {cit.type} {cit.externalRef}
           </a>
         ) : (
-          <span key={j} className="rounded bg-hairline/40 px-1.5 py-0.5 text-xs text-muted" title={cit.title ?? ''}>
+          <span
+            key={j}
+            className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface-strong/50 px-2.5 py-1 text-[12px] font-medium text-muted"
+            title={cit.title ?? ''}
+          >
+            <CiteDot />
             {cit.type} {cit.externalRef}
           </span>
         ),
@@ -77,6 +100,20 @@ function CitationChips({ citations }: { citations: Citation[] }) {
     </div>
   );
 }
+
+function CiteDot() {
+  return <span className="h-1.5 w-1.5 rounded-full bg-forest" aria-hidden />;
+}
+
+// Grounded-in-real-work prompts. Every one queries the user's own synced artifacts — no fabricated
+// data, just good entry points into what Falcon actually knows. Decision-led (the hero use case),
+// then work/eng, so non-engineer testers see themselves in at least half the starters.
+const STARTERS = [
+  'What decisions have we made recently?',
+  'What did I work on this week?',
+  'What did I do for authentication?',
+  'What decisions are waiting for me to confirm?',
+];
 
 export function FalconPanel() {
   const [mode, setMode] = useState<'ask' | 'summary'>('ask');
@@ -93,12 +130,14 @@ export function FalconPanel() {
   const [conversations, setConversations] = useState<ConvSummary[]>([]);
   const [historyDetail, setHistoryDetail] = useState<HistoryDetail | null>(null);
 
-  async function submit() {
-    if (!input.trim()) return;
+  async function submit(override?: string) {
+    const question = (override ?? input).trim();
+    if (!question) return;
+    if (override) setInput(override);
     setState('asking'); setAnswer(null); setEditing(false); setEditState('idle');
     try {
       const url = mode === 'ask' ? '/api/falcon/ask' : '/api/falcon/summary';
-      const payload = mode === 'ask' ? { question: input, conversationId } : { topic: input, conversationId };
+      const payload = mode === 'ask' ? { question, conversationId } : { topic: question, conversationId };
       const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) { setState('error'); return; }
       const data = (await res.json()) as AskResponse;
@@ -129,24 +168,24 @@ export function FalconPanel() {
   if (showHistory) {
     return (
       <div>
-        <div className="mb-3 flex items-center gap-3 text-sm">
-          <button onClick={() => { setShowHistory(false); setHistoryDetail(null); }} className="text-muted underline">← Back to asking</button>
+        <div className="mb-4 flex items-center gap-3 text-[13.5px]">
+          <button onClick={() => { setShowHistory(false); setHistoryDetail(null); }} className="font-medium text-muted underline underline-offset-2 hover:text-ink">← Back to asking</button>
           {historyDetail && (
-            <button onClick={() => setHistoryDetail(null)} className="text-muted underline">All conversations</button>
+            <button onClick={() => setHistoryDetail(null)} className="text-muted underline underline-offset-2 hover:text-ink">All conversations</button>
           )}
         </div>
 
         {!historyDetail && (
-          <div className="space-y-1.5">
-            {conversations.length === 0 && <p className="text-sm text-muted">No past conversations yet.</p>}
+          <div className="space-y-2">
+            {conversations.length === 0 && <p className="text-[14px] text-muted">No past conversations yet.</p>}
             {conversations.map((c) => (
               <button
                 key={c.id}
                 onClick={() => openConversation(c.id)}
-                className="block w-full rounded border border-hairline p-2.5 text-left text-sm text-ink hover:bg-hairline/20"
+                className="block w-full rounded-xl border border-hairline bg-surface p-3.5 text-left transition-colors hover:border-hairline-strong"
               >
-                <span>{c.title ?? 'Untitled'}</span>
-                <span className="ml-2 text-xs text-muted">{new Date(c.updatedAt).toLocaleString()}</span>
+                <span className="text-[14px] font-medium text-ink">{c.title ?? 'Untitled'}</span>
+                <span className="ml-2 text-[12px] text-muted">{new Date(c.updatedAt).toLocaleString()}</span>
               </button>
             ))}
           </div>
@@ -154,18 +193,18 @@ export function FalconPanel() {
 
         {historyDetail && (
           <div className="space-y-3">
-            <h2 className="text-sm font-medium text-ink">{historyDetail.title ?? 'Conversation'}</h2>
+            <h2 className="font-display text-[18px] font-medium text-ink">{historyDetail.title ?? 'Conversation'}</h2>
             {historyDetail.turns.map((t, i) => (
-              <div key={i} className="rounded border border-hairline p-3">
-                <p className="text-xs font-medium text-muted">You asked{t.kind === 'summary' ? ' (summary)' : ''}:</p>
-                <p className="mb-2 text-sm text-ink">{t.questionText}</p>
+              <div key={i} className="rounded-xl border border-hairline bg-surface p-4">
+                <p className="text-[12px] font-medium uppercase tracking-wide text-muted-soft">You asked{t.kind === 'summary' ? ' (summary)' : ''}</p>
+                <p className="mb-2.5 mt-1 text-[14px] font-medium text-ink">{t.questionText}</p>
                 {t.status === 'no_grounded_answer' ? (
-                  <p className="text-sm text-muted">No grounded answer.</p>
+                  <p className="text-[14px] text-muted">No grounded answer.</p>
                 ) : (
                   <>
-                    <p className="text-sm text-ink">{t.text}</p>
+                    <p className="text-[14.5px] leading-relaxed text-body-strong">{t.text}</p>
                     <CitationChips citations={t.citations} />
-                    {t.edited && <p className="mt-1 text-xs text-muted">(your edited version)</p>}
+                    {t.edited && <p className="mt-1.5 text-[12px] text-muted">(your edited version)</p>}
                   </>
                 )}
               </div>
@@ -176,61 +215,130 @@ export function FalconPanel() {
     );
   }
 
+  const showEmptyState = state === 'idle' && !answer && !input.trim();
+
   return (
     <div>
-      <div className="mb-3 flex items-center gap-3 text-sm">
-        <button onClick={() => setMode('ask')} className={mode === 'ask' ? 'font-medium text-ink' : 'text-muted'}>Ask a question</button>
-        <button onClick={() => setMode('summary')} className={mode === 'summary' ? 'font-medium text-ink' : 'text-muted'}>Summarize a topic</button>
-        <button onClick={openHistory} className="ml-auto text-muted underline">History</button>
+      {/* mode segmented control + history */}
+      <div className="mb-3 flex items-center gap-1">
+        <div className="inline-flex gap-0.5 rounded-full bg-surface-strong p-0.5">
+          <button
+            onClick={() => setMode('ask')}
+            className={`rounded-full px-3.5 py-1.5 text-[13.5px] font-medium transition-colors ${mode === 'ask' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-body-strong'}`}
+          >
+            Ask a question
+          </button>
+          <button
+            onClick={() => setMode('summary')}
+            className={`rounded-full px-3.5 py-1.5 text-[13.5px] font-medium transition-colors ${mode === 'summary' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-body-strong'}`}
+          >
+            Summarize a topic
+          </button>
+        </div>
+        <button onClick={openHistory} className="ml-auto text-[13.5px] font-medium text-muted underline underline-offset-2 hover:text-ink">History</button>
       </div>
 
-      <div className="flex gap-2">
+      {/* ask box */}
+      <div className="flex items-center gap-2 rounded-2xl border border-hairline-strong bg-surface p-1.5 pl-4 transition-colors focus-within:border-ink">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           placeholder={mode === 'ask' ? 'e.g. what did I do for authentication?' : 'e.g. authentication'}
-          className="flex-1 rounded border border-hairline p-2.5 text-sm text-ink"
+          className="flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-muted-soft"
         />
-        <button onClick={submit} disabled={state === 'asking'} className="rounded bg-ink px-4 py-2 text-sm text-white disabled:opacity-50">
-          {state === 'asking' ? 'Thinking…' : mode === 'ask' ? 'Ask' : 'Summarize'}
+        <button
+          onClick={() => submit()}
+          disabled={state === 'asking'}
+          className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-ink disabled:opacity-70"
+        >
+          {state === 'asking' ? (
+            <>
+              <Spinner />
+              Thinking…
+            </>
+          ) : mode === 'ask' ? 'Ask' : 'Summarize'}
         </button>
       </div>
 
-      {state === 'error' && <p className="mt-4 text-sm text-muted">Falcon is temporarily unavailable — try again in a moment.</p>}
+      {/* welcoming empty state — clickable starters into the user's real synced work */}
+      {showEmptyState && (
+        <div className="mt-5">
+          <p className="mb-2.5 text-[12px] font-medium uppercase tracking-[0.08em] text-muted-soft">Try asking</p>
+          <div className="flex flex-wrap gap-2">
+            {STARTERS.map((q) => (
+              <button
+                key={q}
+                onClick={() => { setMode('ask'); submit(q); }}
+                className="rounded-full border border-hairline bg-surface px-3.5 py-2 text-[13.5px] text-body-strong transition-colors hover:border-ink hover:text-ink"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+          <p className="mt-4 max-w-xl text-[12.5px] leading-relaxed text-muted-soft">
+            Falcon only answers from sources you&apos;ve connected, and only from work you have access to —
+            it can&apos;t surface anything you couldn&apos;t open yourself.
+          </p>
+        </div>
+      )}
+
+      {state === 'error' && <p className="mt-5 text-[14px] text-muted">Falcon is temporarily unavailable — try again in a moment.</p>}
       {answer?.status === 'no_grounded_answer' && (
-        <p className="mt-4 text-sm text-muted">{answer.message ?? "I don't have anything in your synced work that answers this."}</p>
+        <p className="mt-5 rounded-xl border border-hairline bg-surface-strong/50 p-4 text-[14px] text-body">
+          {answer.message ?? "I don't have anything in your synced work that answers this."}
+        </p>
       )}
 
       {answer?.status === 'grounded' && (
-        <div className="mt-4 space-y-3">
+        <div className="mt-6 space-y-3">
           {answer.claims.map((c, i) => (
-            <div key={i} className="rounded border border-hairline p-3">
-              <p className="text-sm text-ink">{c.text}</p>
+            <div key={i} className="rounded-xl border border-hairline bg-surface p-4">
+              <p className="text-[14.5px] leading-relaxed text-body-strong">{c.text}</p>
               <CitationChips citations={c.citations} />
             </div>
           ))}
-          {answer.dataAsOf && <p className="text-xs text-muted">Based on your work synced as of {new Date(answer.dataAsOf).toLocaleString()}.</p>}
+          {answer.dataAsOf && (
+            <p className="flex items-center gap-1.5 text-[12px] text-muted">
+              <span className="h-1 w-1 rounded-full bg-muted-soft" />
+              Based on your work synced as of {new Date(answer.dataAsOf).toLocaleString()}.
+            </p>
+          )}
 
           {!editing && (
             <button
               onClick={() => { setEditing(true); setEditText(answer.claims.map((c) => c.text).join(' ')); }}
-              className="text-xs text-muted underline"
+              className="text-[13px] font-medium text-muted underline underline-offset-2 hover:text-ink"
             >
               Not quite right? Edit this
             </button>
           )}
           {editing && (
             <div>
-              <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="h-32 w-full rounded border border-hairline p-2 text-sm text-ink" />
-              <button onClick={saveEdit} className="mt-2 rounded bg-ink px-3 py-1.5 text-sm text-white">Save my version</button>
+              <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="h-32 w-full rounded-xl border border-hairline bg-surface p-3 text-[14px] text-ink outline-none focus:border-ink" />
+              <button onClick={saveEdit} className="mt-2 rounded-full bg-primary px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-ink">Save my version</button>
             </div>
           )}
-          {editState === 'saved' && <p className="text-xs text-muted">Saved — your version is now what Falcon uses.</p>}
+          {editState === 'saved' && <p className="text-[12px] text-muted">Saved — your version is now what Falcon uses.</p>}
         </div>
       )}
 
+      {answer?.syncWindowNote && (
+        <p className="mt-3 flex items-start gap-2 rounded-xl border border-hairline bg-surface-strong/50 p-3 text-[13.5px] text-body">
+          <span aria-hidden>⏳</span>
+          <span>{answer.syncWindowNote}</span>
+        </p>
+      )}
       {answer?.decisionStatus && <DecisionStatusNote status={answer.decisionStatus} />}
     </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.3" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
   );
 }

@@ -22,7 +22,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
   return (
     <main>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-medium text-ink">Integrations</h1>
+        <h1 className="font-display text-[24px] font-medium text-ink">Integrations</h1>
         <div className="flex gap-2">
           <a href="/api/integrations/github/connect" className="rounded bg-ink px-3 py-1.5 text-sm text-white">
             Connect GitHub

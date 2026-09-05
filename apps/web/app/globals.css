@@ -2,15 +2,43 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Quiet Voltage tokens (design.md). Kept as CSS variables in addition to the Tailwind theme so
+   raw CSS (e.g. inline styles, the film-grain surfaces) can reference them by the same names. */
 :root {
   --canvas: #f5f5f5;
+  --canvas-soft: #fafafa;
+  --surface-card: #ffffff;
+  --surface-strong: #f0efed;
   --ink: #0c0a09;
+  --primary: #292524;
+  --body-strong: #292524;
   --body: #4e4e4e;
+  --muted: #777169;
+  --muted-soft: #a8a29e;
   --hairline: #e7e5e4;
+  --hairline-strong: #d6d3d1;
+  --brass-deep: #8f5e12;
+  --forest: #3f6b52;
 }
 
 body {
-  background: var(--canvas);
+  background: var(--canvas-soft);
   color: var(--body);
-  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: 0.1px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Display role — Instrument Sans, warm near-black ink. */
+.font-display {
+  font-family: var(--font-instrument), var(--font-inter), ui-sans-serif, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }
